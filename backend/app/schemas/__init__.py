@@ -234,6 +234,16 @@ class PaginatedProducts(BaseModel):
     items: List[ProductOut]
 
 
+class AutocompleteSuggestion(BaseModel):
+    name: str
+    slug: str
+
+
+class AutocompleteResponse(BaseModel):
+    products: List[AutocompleteSuggestion] = []
+    categories: List[AutocompleteSuggestion] = []
+
+
 # --- Cart --------------------------------------------------------------------
 class CartItemCreate(BaseModel):
     product_id: int

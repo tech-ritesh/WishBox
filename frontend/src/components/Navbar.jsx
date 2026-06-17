@@ -4,6 +4,7 @@ import { Gift, ShoppingCart, User, LayoutDashboard, Sparkles, Heart, LogOut, Che
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { categoriesApi } from '../api/client';
+import SearchBox from './SearchBox';
 
 export default function Navbar() {
   const { user, logout, isStaff } = useAuth();
@@ -32,7 +33,9 @@ export default function Navbar() {
           <Link to="/hamper-builder" onMouseEnter={() => setOpenId(null)} className="hover:text-brand-600">Build a Hamper</Link>
           <Link to="/gift-finder" onMouseEnter={() => setOpenId(null)} className="flex items-center gap-1 hover:text-brand-600"><Sparkles size={15} /> Gift Finder</Link>
         </div>
-        <div className="ml-auto flex items-center gap-3" onMouseEnter={() => setOpenId(null)}>
+        <div className="ml-auto" />
+        <SearchBox />
+        <div className="flex items-center gap-3" onMouseEnter={() => setOpenId(null)}>
           <Link to="/cart" className="relative">
             <ShoppingCart className="text-slate-700" />
             {cart.item_count > 0 && <span className="absolute -right-2 -top-2 badge bg-brand-600 text-white">{cart.item_count}</span>}

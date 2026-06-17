@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -68,9 +68,10 @@ def list_products(
     if in_stock:
         query = query.filter(models.Product.stock > 0)
     if q:
+        like = f"%{q}%"
         query = query.filter(or_(
-            models.Product.name.ilike(f"%{q}%"),
-            models.Product.description.ilike(f"%{q}%"),
+            models.Product.name.ilike(like),
+            models.Product.description.ilike(like),
         ))
 
     if sort == "price_asc":
@@ -81,6 +82,20 @@ def list_products(
         query = query.order_by(models.Product.created_at.desc())
     elif sort == "rating":
         query = query.order_by(models.Product.rating_avg.desc())
+    elif q:
+        # Relevance ranking: exact name > name prefix > name contains > description,
+        # tie-broken by rating then popularity. (sort omitted or sort == 'relevance')
+        ql = q.lower()
+        name_lower = func.lower(models.Product.name)
+        relevance = case(
+            (name_lower == ql, 0),
+            (name_lower.like(f"{ql}%"), 1),
+            (name_lower.like(f"%{ql}%"), 2),
+            else_=3,
+        )
+        query = query.order_by(
+            relevance, models.Product.rating_avg.desc(), models.Product.view_count.desc(),
+        )
     else:
         query = query.order_by(models.Product.id.asc())
 
@@ -95,6 +110,44 @@ def quick_delivery(db: Session = Depends(get_db)):
         db.query(models.Product)
         .filter(models.Product.is_quick_delivery.is_(True),
                 models.Product.stock > 0, models.Product.is_active.is_(True))
+        .all()
+    )
+
+
+@router.get("/autocomplete", response_model=schemas.AutocompleteResponse)
+def autocomplete(q: str = Query(..., min_length=1), limit: int = Query(6, ge=1, le=15),
+                 db: Session = Depends(get_db)):
+    """Type-ahead suggestions: matching products (prefix-first) + matching categories."""
+    like = f"%{q.lower()}%"
+    name_lower = func.lower(models.Product.name)
+    prods = (
+        db.query(models.Product)
+        .filter(models.Product.is_active.is_(True), name_lower.like(like))
+        .order_by(case((name_lower.like(f"{q.lower()}%"), 0), else_=1),
+                  models.Product.view_count.desc())
+        .limit(limit)
+        .all()
+    )
+    cats = (
+        db.query(models.Category)
+        .filter(models.Category.is_active.is_(True), func.lower(models.Category.name).like(like))
+        .limit(limit)
+        .all()
+    )
+    return {
+        "products": [{"name": p.name, "slug": p.slug} for p in prods],
+        "categories": [{"name": c.name, "slug": c.slug} for c in cats],
+    }
+
+
+@router.get("/trending", response_model=List[schemas.ProductOut])
+def trending(limit: int = Query(8, ge=1, le=24), db: Session = Depends(get_db)):
+    """Most-viewed in-stock products."""
+    return (
+        db.query(models.Product)
+        .filter(models.Product.is_active.is_(True), models.Product.stock > 0)
+        .order_by(models.Product.view_count.desc(), models.Product.rating_avg.desc())
+        .limit(limit)
         .all()
     )
 

@@ -58,6 +58,8 @@ export const productsApi = {
   list: (params) => api.get('/products', { params }),
   detail: (slug) => api.get(`/products/${slug}`),
   quickDelivery: () => api.get('/products/quick-delivery'),
+  autocomplete: (q) => api.get('/products/autocomplete', { params: { q } }),
+  trending: () => api.get('/products/trending'),
 };
 export const categoriesApi = {
   list: () => api.get('/categories'),

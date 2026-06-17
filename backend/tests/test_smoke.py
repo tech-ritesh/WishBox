@@ -423,6 +423,22 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_search_autocomplete_and_relevance():
+    p = _orderable_product()  # creates/returns "PytestOrderable Gift"
+    ac = client.get("/api/v1/products/autocomplete?q=PytestOrder")
+    assert ac.status_code == 200, ac.text
+    assert any("PytestOrderable" in s["name"] for s in ac.json()["products"])
+
+    # relevance ranking surfaces the closest name match first
+    res = client.get("/api/v1/products?q=PytestOrderable&limit=5").json()
+    assert res["items"], "expected at least one match"
+    assert res["items"][0]["slug"] == p["slug"]
+
+    # trending endpoint responds with a list
+    tr = client.get("/api/v1/products/trending")
+    assert tr.status_code == 200 and isinstance(tr.json(), list)
+
+
 def test_shipment_and_return_refund_restocks():
     cust = _login("customer@wishbox.com", "customer123")
     ch = {"Authorization": f"Bearer {cust}"}
