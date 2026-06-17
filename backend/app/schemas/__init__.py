@@ -47,7 +47,25 @@ class UserOut(BaseModel):
     phone: Optional[str] = None
     role: str
     is_active: bool
+    email_verified: bool = False
     created_at: dt.datetime
+
+
+class MessageResponse(BaseModel):
+    detail: str
+
+
+class EmailRequest(BaseModel):
+    email: EmailStr
+
+
+class TokenConfirm(BaseModel):
+    token: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8)
 
 
 class AdminCustomerOut(BaseModel):

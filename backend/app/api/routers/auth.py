@@ -1,4 +1,5 @@
 import datetime as dt
+import secrets
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,13 +8,42 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
     create_access_token, create_refresh_token, decode_token,
     hash_password, verify_password,
 )
+from app.services import notifications
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+VERIFY_TOKEN_HOURS = 48
+RESET_TOKEN_HOURS = 2
+
+
+def _issue_token(db: Session, user: models.User, kind: str, hours: int) -> models.AuthToken:
+    token = secrets.token_urlsafe(32)
+    row = models.AuthToken(
+        user_id=user.id, token=token, kind=kind,
+        expires_at=dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=hours),
+    )
+    db.add(row)
+    return row
+
+
+def _consume_token(db: Session, token: str, kind: str) -> models.AuthToken:
+    row = db.query(models.AuthToken).filter(
+        models.AuthToken.token == token, models.AuthToken.kind == kind,
+    ).first()
+    now = dt.datetime.now(dt.timezone.utc)
+    expires = row.expires_at if row is None else (
+        row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=dt.timezone.utc)
+    )
+    if not row or row.used_at is not None or expires < now:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    row.used_at = now
+    return row
 
 
 def _tokens(user: models.User) -> dict:
@@ -122,6 +152,25 @@ def create_address(data: schemas.AddressCreate, current_user: models.User = Depe
     return addr
 
 
+@router.put("/addresses/{address_id}", response_model=schemas.AddressOut)
+def update_address(address_id: int, data: schemas.AddressCreate,
+                   current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    addr = db.query(models.Address).filter(
+        models.Address.id == address_id, models.Address.user_id == current_user.id
+    ).first()
+    if not addr:
+        raise HTTPException(status_code=404, detail="Address not found")
+    if data.is_default:
+        db.query(models.Address).filter(
+            models.Address.user_id == current_user.id, models.Address.id != address_id
+        ).update({models.Address.is_default: False})
+    for k, v in data.model_dump().items():
+        setattr(addr, k, v)
+    db.commit()
+    db.refresh(addr)
+    return addr
+
+
 @router.delete("/addresses/{address_id}", status_code=204)
 def delete_address(address_id: int, current_user: models.User = Depends(get_current_user),
                    db: Session = Depends(get_db)):
@@ -132,3 +181,57 @@ def delete_address(address_id: int, current_user: models.User = Depends(get_curr
         raise HTTPException(status_code=404, detail="Address not found")
     db.delete(addr)
     db.commit()
+
+
+# --- Email verification ---
+@router.post("/verify-email/request", response_model=schemas.MessageResponse)
+def request_email_verification(current_user: models.User = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    if current_user.email_verified:
+        return {"detail": "Email already verified"}
+    row = _issue_token(db, current_user, "verify_email", VERIFY_TOKEN_HOURS)
+    link = f"{settings.APP_BASE_URL}/verify-email?token={row.token}"
+    notifications.queue_email(
+        db, current_user.email, "Verify your WishBox email",
+        f"Hi {current_user.full_name}, confirm your email by opening:\n{link}\n"
+        f"This link expires in {VERIFY_TOKEN_HOURS} hours.",
+        user_id=current_user.id,
+    )
+    db.commit()
+    return {"detail": "Verification email queued"}
+
+
+@router.post("/verify-email/confirm", response_model=schemas.MessageResponse)
+def confirm_email_verification(data: schemas.TokenConfirm, db: Session = Depends(get_db)):
+    row = _consume_token(db, data.token, "verify_email")
+    user = db.get(models.User, row.user_id)
+    user.email_verified = True
+    db.commit()
+    return {"detail": "Email verified"}
+
+
+# --- Password reset ---
+@router.post("/forgot-password", response_model=schemas.MessageResponse)
+def forgot_password(data: schemas.EmailRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == data.email).first()
+    # Always return the same response (no account enumeration).
+    if user and user.is_active:
+        row = _issue_token(db, user, "reset_password", RESET_TOKEN_HOURS)
+        link = f"{settings.APP_BASE_URL}/reset-password?token={row.token}"
+        notifications.queue_email(
+            db, user.email, "Reset your WishBox password",
+            f"Reset your password by opening:\n{link}\nThis link expires in {RESET_TOKEN_HOURS} hours. "
+            f"If you didn't request this, ignore this email.",
+            user_id=user.id,
+        )
+        db.commit()
+    return {"detail": "If that email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password", response_model=schemas.MessageResponse)
+def reset_password(data: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    row = _consume_token(db, data.token, "reset_password")
+    user = db.get(models.User, row.user_id)
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+    return {"detail": "Password updated. You can now log in."}

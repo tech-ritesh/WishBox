@@ -47,7 +47,12 @@ export const authApi = {
   updateProfile: (d) => api.put('/auth/profile', d),
   addresses: () => api.get('/auth/addresses'),
   addAddress: (d) => api.post('/auth/addresses', d),
+  updateAddress: (id, d) => api.put(`/auth/addresses/${id}`, d),
   deleteAddress: (id) => api.delete(`/auth/addresses/${id}`),
+  requestVerifyEmail: () => api.post('/auth/verify-email/request'),
+  confirmVerifyEmail: (token) => api.post('/auth/verify-email/confirm', { token }),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, new_password) => api.post('/auth/reset-password', { token, new_password }),
 };
 export const productsApi = {
   list: (params) => api.get('/products', { params }),

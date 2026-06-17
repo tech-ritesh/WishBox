@@ -26,6 +26,7 @@ export default function Login() {
         <input type="password" required placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" />
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button className="btn-primary w-full">Sign in</button>
+        <p className="text-center text-sm"><Link to="/forgot-password" className="text-brand-600">Forgot password?</Link></p>
         <p className="text-center text-sm text-slate-500">No account? <Link to="/register" className="text-brand-600">Register</Link></p>
         <p className="rounded bg-slate-50 p-2 text-center text-xs text-slate-400">Demo: customer@wishbox.com / customer123</p>
       </form>

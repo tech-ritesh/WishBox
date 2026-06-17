@@ -8,6 +8,9 @@ import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 import Account from './pages/Account';
 import Orders from './pages/Orders';
 import OrderTracking from './pages/OrderTracking';
@@ -33,6 +36,9 @@ export default function App() {
         <Route path="/hamper-builder" element={<HamperBuilder />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
         <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
         <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />

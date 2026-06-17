@@ -5,8 +5,25 @@ Run:  python -m pytest -q     (from the backend folder, after `python seed.py`)
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.database import SessionLocal
+from app import models
 
 client = TestClient(app)
+
+
+def _latest_token(email, kind):
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        row = (
+            db.query(models.AuthToken)
+            .filter(models.AuthToken.user_id == user.id, models.AuthToken.kind == kind)
+            .order_by(models.AuthToken.id.desc())
+            .first()
+        )
+        return row.token
+    finally:
+        db.close()
 
 
 def _login(email, password):
@@ -295,3 +312,53 @@ def test_due_reminder_fires_notification():
     mine = next(r for r in after if r["id"] == rem["id"])
     assert mine["reminder_date"] > yesterday
     client.delete(f"/api/v1/reminders/{rem['id']}", headers=h)
+
+
+def test_forgot_and_reset_password():
+    email = "resettest@wishbox.com"
+    client.post("/api/v1/auth/register", json={  # ignore if it already exists
+        "email": email, "password": "origpass123", "full_name": "Reset Tester",
+    })
+    r = client.post("/api/v1/auth/forgot-password", json={"email": email})
+    assert r.status_code == 200  # generic response, no enumeration
+    # also returns 200 for an unknown email
+    assert client.post("/api/v1/auth/forgot-password", json={"email": "nobody@nowhere.com"}).status_code == 200
+
+    token = _latest_token(email, "reset_password")
+    done = client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "brandnew12345"})
+    assert done.status_code == 200, done.text
+    # new password works
+    assert client.post("/api/v1/auth/login-json", json={"email": email, "password": "brandnew12345"}).status_code == 200
+    # token cannot be reused
+    assert client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "another12345"}).status_code == 400
+
+
+def test_email_verification_flow():
+    email = "verifytest@wishbox.com"
+    reg = client.post("/api/v1/auth/register", json={
+        "email": email, "password": "verifypass123", "full_name": "Verify Tester",
+    })
+    token = reg.json().get("access_token") or _login(email, "verifypass123")
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/auth/profile", headers=h).json()["email_verified"] is False
+
+    assert client.post("/api/v1/auth/verify-email/request", headers=h).status_code == 200
+    vtoken = _latest_token(email, "verify_email")
+    assert client.post("/api/v1/auth/verify-email/confirm", json={"token": vtoken}).status_code == 200
+    assert client.get("/api/v1/auth/profile", headers=h).json()["email_verified"] is True
+
+
+def test_address_can_be_edited():
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "Edit Me", "phone": "9999999999",
+        "address_line1": "1 Old St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    upd = client.put(f"/api/v1/auth/addresses/{addr['id']}", headers=h, json={
+        "recipient_name": "Edited", "phone": "8888888888",
+        "address_line1": "2 New Rd", "city": "Mumbai", "state": "MH", "postal_code": "400001",
+    })
+    assert upd.status_code == 200, upd.text
+    assert upd.json()["city"] == "Mumbai" and upd.json()["recipient_name"] == "Edited"
+    client.delete(f"/api/v1/auth/addresses/{addr['id']}", headers=h)
