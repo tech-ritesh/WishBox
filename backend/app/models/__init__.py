@@ -480,6 +480,68 @@ class CorporateAccount(Base, TimestampMixin):
     members = relationship("User", back_populates="corporate_account")
 
 
+# --- Shipping ----------------------------------------------------------------
+class Shipment(Base, TimestampMixin):
+    """Carrier shipment for an order, with its own event timeline."""
+    __tablename__ = "shipments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"),
+                                          nullable=False, unique=True, index=True)
+    carrier: Mapped[str] = mapped_column(String, default="WishBox Express")
+    tracking_number: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String, default="label_created")  # label_created|in_transit|out_for_delivery|delivered|failed
+    estimated_delivery: Mapped[dt.date] = mapped_column(Date, nullable=True)
+    shipped_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
+    delivered_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
+
+    order = relationship("Order")
+    events = relationship("ShipmentEvent", back_populates="shipment",
+                          cascade="all, delete-orphan", order_by="ShipmentEvent.created_at")
+
+
+class ShipmentEvent(Base):
+    __tablename__ = "shipment_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    shipment_id: Mapped[int] = mapped_column(ForeignKey("shipments.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    location: Mapped[str] = mapped_column(String, nullable=True)
+    note: Mapped[str] = mapped_column(String, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    shipment = relationship("Shipment", back_populates="events")
+
+
+# --- Returns / exchanges -----------------------------------------------------
+class ReturnRequest(Base, TimestampMixin):
+    __tablename__ = "return_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String, default="return")   # return | exchange
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="requested")  # requested|approved|rejected|picked_up|refunded|completed
+    refund_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    resolution_note: Mapped[str] = mapped_column(String, nullable=True)
+
+    order = relationship("Order")
+    items = relationship("ReturnItem", back_populates="return_request", cascade="all, delete-orphan")
+
+
+class ReturnItem(Base):
+    __tablename__ = "return_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    return_id: Mapped[int] = mapped_column(ForeignKey("return_requests.id", ondelete="CASCADE"), nullable=False)
+    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+
+    return_request = relationship("ReturnRequest", back_populates="items")
+    order_item = relationship("OrderItem")
+
+
 # --- Invoices ----------------------------------------------------------------
 class Invoice(Base):
     """GST tax invoice for an order. Generated lazily; one per order."""

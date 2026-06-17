@@ -344,6 +344,76 @@ class OrderStatusUpdate(BaseModel):
     note: Optional[str] = None
 
 
+# --- Shipping ----------------------------------------------------------------
+class ShipmentEventOut(BaseModel):
+    model_config = ORM
+    id: int
+    status: str
+    location: Optional[str] = None
+    note: Optional[str] = None
+    created_at: dt.datetime
+
+
+class ShipmentOut(BaseModel):
+    model_config = ORM
+    id: int
+    order_id: int
+    carrier: str
+    tracking_number: Optional[str] = None
+    status: str
+    estimated_delivery: Optional[dt.date] = None
+    shipped_at: Optional[dt.datetime] = None
+    delivered_at: Optional[dt.datetime] = None
+    events: List[ShipmentEventOut] = []
+
+
+class ShipmentUpdate(BaseModel):
+    carrier: Optional[str] = None
+    tracking_number: Optional[str] = None
+    status: Optional[str] = None          # label_created|in_transit|out_for_delivery|delivered|failed
+    estimated_delivery: Optional[dt.date] = None
+    location: Optional[str] = None
+    note: Optional[str] = None
+
+
+# --- Returns / exchanges -----------------------------------------------------
+class ReturnItemIn(BaseModel):
+    order_item_id: int
+    quantity: int = Field(default=1, ge=1)
+
+
+class ReturnCreate(BaseModel):
+    kind: str = "return"                  # return | exchange
+    reason: str
+    items: List[ReturnItemIn] = []
+
+
+class ReturnItemOut(BaseModel):
+    model_config = ORM
+    id: int
+    order_item_id: int
+    quantity: int
+
+
+class ReturnOut(BaseModel):
+    model_config = ORM
+    id: int
+    order_id: int
+    user_id: int
+    kind: str
+    reason: str
+    status: str
+    refund_amount: Decimal
+    resolution_note: Optional[str] = None
+    created_at: dt.datetime
+    items: List[ReturnItemOut] = []
+
+
+class ReturnUpdate(BaseModel):
+    status: Optional[str] = None          # approved|rejected|picked_up|refunded|completed
+    resolution_note: Optional[str] = None
+
+
 # --- Payments ----------------------------------------------------------------
 class PaymentCreateRequest(BaseModel):
     order_number: str

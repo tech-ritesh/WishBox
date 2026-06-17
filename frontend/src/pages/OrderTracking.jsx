@@ -11,9 +11,34 @@ export default function OrderTracking() {
   const { orderNumber } = useParams();
   const [order, setOrder] = useState(null);
   const [invoice, setInvoice] = useState(null);
-  useEffect(() => { ordersApi.get(orderNumber).then((r) => setOrder(r.data)); }, [orderNumber]);
+  const [shipment, setShipment] = useState(null);
+  const [returns, setReturns] = useState([]);
+  const [showReturn, setShowReturn] = useState(false);
+  const [returnForm, setReturnForm] = useState({ kind: 'return', reason: '', items: {} });
+  const [returnMsg, setReturnMsg] = useState('');
+
+  const loadOrder = () => ordersApi.get(orderNumber).then((r) => setOrder(r.data));
+  useEffect(() => {
+    loadOrder();
+    ordersApi.shipment(orderNumber).then((r) => setShipment(r.data)).catch(() => {});
+    ordersApi.listReturns(orderNumber).then((r) => setReturns(r.data)).catch(() => {});
+  }, [orderNumber]);
   const loadInvoice = () => ordersApi.invoice(orderNumber).then((r) => setInvoice(r.data));
   if (!order) return <Spinner />;
+
+  const submitReturn = async (e) => {
+    e.preventDefault();
+    setReturnMsg('');
+    const items = Object.entries(returnForm.items)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([order_item_id, q]) => ({ order_item_id: Number(order_item_id), quantity: Number(q) }));
+    if (!items.length) { setReturnMsg('Select at least one item and quantity.'); return; }
+    try {
+      await ordersApi.requestReturn(orderNumber, { kind: returnForm.kind, reason: returnForm.reason, items });
+      const r = await ordersApi.listReturns(orderNumber);
+      setReturns(r.data); setShowReturn(false);
+    } catch (err) { setReturnMsg(err.response?.data?.detail || 'Could not submit request'); }
+  };
 
   const reached = FLOW.indexOf(order.status);
 
@@ -38,6 +63,63 @@ export default function OrderTracking() {
           </div>
           {order.tracking_code && <p className="mt-3 text-sm text-slate-500">Tracking code: <b>{order.tracking_code}</b></p>}
           {order.scheduled_delivery_date && <p className="text-sm text-slate-500">Scheduled: {order.scheduled_delivery_date} {order.delivery_slot}</p>}
+          {shipment && (
+            <div className="mt-3 border-t pt-3 text-sm">
+              <p className="text-slate-600">{shipment.carrier} · <b>{shipment.tracking_number}</b> · {prettyStatus(shipment.status)}
+                {shipment.estimated_delivery && <> · ETA {shipment.estimated_delivery}</>}</p>
+              {shipment.events?.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                  {shipment.events.map((e) => (
+                    <li key={e.id}>{new Date(e.created_at).toLocaleString()} — {prettyStatus(e.status)}{e.location ? ` @ ${e.location}` : ''}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(order.status === 'delivered' || returns.length > 0) && (
+        <div className="card mt-4 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold">Returns & exchanges</h2>
+            {order.status === 'delivered' && returns.every((r) => ['rejected', 'completed'].includes(r.status)) && (
+              <button onClick={() => setShowReturn(!showReturn)} className="btn-ghost text-sm">Request return/exchange</button>
+            )}
+          </div>
+          {returns.map((r) => (
+            <div key={r.id} className="mt-2 rounded-lg border border-slate-200 p-3 text-sm">
+              <div className="flex justify-between"><span>#{r.id} · {r.kind}</span><span className="badge bg-slate-100">{prettyStatus(r.status)}</span></div>
+              <p className="text-slate-500">Reason: {r.reason}{Number(r.refund_amount) > 0 && <> · Refund {inr(r.refund_amount)}</>}</p>
+              {r.resolution_note && <p className="text-xs text-slate-400">Note: {r.resolution_note}</p>}
+            </div>
+          ))}
+          {showReturn && (
+            <form onSubmit={submitReturn} className="mt-3 space-y-2 border-t pt-3 text-sm">
+              <div className="flex gap-3">
+                {['return', 'exchange'].map((k) => (
+                  <label key={k} className={`btn ${returnForm.kind === k ? 'btn-primary' : 'btn-ghost'} text-sm`}>
+                    <input type="radio" className="hidden" checked={returnForm.kind === k}
+                      onChange={() => setReturnForm({ ...returnForm, kind: k })} /> {k}
+                  </label>
+                ))}
+              </div>
+              <input required placeholder="Reason (e.g. damaged, wrong item)" value={returnForm.reason}
+                onChange={(e) => setReturnForm({ ...returnForm, reason: e.target.value })} className="input" />
+              <div className="space-y-1">
+                {order.items.map((it) => (
+                  <div key={it.id} className="flex items-center justify-between gap-2">
+                    <span>{it.product_name} (max {it.quantity})</span>
+                    <input type="number" min={0} max={it.quantity} placeholder="0" className="input max-w-[80px]"
+                      value={returnForm.items[it.id] || ''}
+                      onChange={(e) => setReturnForm({ ...returnForm, items: { ...returnForm.items, [it.id]: e.target.value } })} />
+                  </div>
+                ))}
+              </div>
+              {returnMsg && <p className="text-red-500">{returnMsg}</p>}
+              <button className="btn-primary">Submit request</button>
+            </form>
+          )}
         </div>
       )}
 

@@ -15,6 +15,7 @@ from app.api.deps import require_admin, require_staff
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.common import money, unique_slug
+from app.services.fulfillment import update_return, upsert_shipment
 from app.services.orders import change_status
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -249,6 +250,35 @@ def low_stock(db: Session = Depends(get_db), _: models.User = Depends(require_st
         models.Product.stock <= models.Product.low_stock_threshold,
         models.Product.is_active.is_(True),
     ).all()
+
+
+# --- Shipping ---
+@router.post("/orders/{order_id}/shipment", response_model=schemas.ShipmentOut)
+def upsert_order_shipment(order_id: int, data: schemas.ShipmentUpdate,
+                          db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    order = db.get(models.Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return upsert_shipment(db, order, data)
+
+
+# --- Returns ---
+@router.get("/returns", response_model=List[schemas.ReturnOut])
+def list_all_returns(status: str = None, db: Session = Depends(get_db),
+                     _: models.User = Depends(require_staff)):
+    q = db.query(models.ReturnRequest)
+    if status:
+        q = q.filter(models.ReturnRequest.status == status)
+    return q.order_by(models.ReturnRequest.id.desc()).all()
+
+
+@router.put("/returns/{return_id}", response_model=schemas.ReturnOut)
+def update_return_request(return_id: int, data: schemas.ReturnUpdate,
+                          db: Session = Depends(get_db), actor: models.User = Depends(require_staff)):
+    rr = db.get(models.ReturnRequest, return_id)
+    if not rr:
+        raise HTTPException(status_code=404, detail="Return not found")
+    return update_return(db, rr, data, actor)
 
 
 # --- Outbox (email/SMS) + worker ---

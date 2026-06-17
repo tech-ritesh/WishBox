@@ -423,6 +423,55 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_shipment_and_return_refund_restocks():
+    cust = _login("customer@wishbox.com", "customer123")
+    ch = {"Authorization": f"Bearer {cust}"}
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+
+    product = _orderable_product(min_stock=5)
+    addr = client.post("/api/v1/auth/addresses", headers=ch, json={
+        "recipient_name": "Ret", "phone": "9999999999",
+        "address_line1": "1 Ret St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    client.delete("/api/v1/cart", headers=ch)
+    client.post("/api/v1/cart", headers=ch, json={"product_id": product["id"], "quantity": 2})
+    order = client.post("/api/v1/orders", headers=ch, json={"address_id": addr["id"], "payment_method": "cod"}).json()
+    oid, onum = order["id"], order["order_number"]
+
+    # return before delivery is rejected
+    early = client.post(f"/api/v1/orders/{onum}/returns", headers=ch,
+                        json={"reason": "x", "items": [{"order_item_id": order["items"][0]["id"], "quantity": 1}]})
+    assert early.status_code == 400
+
+    # admin ships + delivers
+    ship = client.post(f"/api/v1/admin/orders/{oid}/shipment", headers=ah,
+                       json={"status": "in_transit", "carrier": "BlueDart", "location": "Pune Hub"})
+    assert ship.status_code == 200, ship.text
+    assert ship.json()["tracking_number"]
+    client.put(f"/api/v1/admin/orders/{oid}", headers=ah, json={"status": "delivered"})
+    assert client.get(f"/api/v1/orders/{onum}/shipment", headers=ch).status_code == 200
+
+    # customer requests a return of 1 unit
+    rr = client.post(f"/api/v1/orders/{onum}/returns", headers=ch, json={
+        "kind": "return", "reason": "damaged box",
+        "items": [{"order_item_id": order["items"][0]["id"], "quantity": 1}],
+    })
+    assert rr.status_code == 201, rr.text
+    return_id = rr.json()["id"]
+    assert float(rr.json()["refund_amount"]) > 0
+
+    stock_before = client.get(f"/api/v1/products/{product['slug']}").json()["stock"]
+    refunded = client.put(f"/api/v1/admin/returns/{return_id}", headers=ah, json={"status": "refunded"})
+    assert refunded.status_code == 200, refunded.text
+    assert refunded.json()["status"] == "refunded"
+
+    stock_after = client.get(f"/api/v1/products/{product['slug']}").json()["stock"]
+    assert stock_after == stock_before + 1, "refund must restock the returned unit"
+    assert client.get(f"/api/v1/orders/{onum}", headers=ch).json()["payment_status"] == "refunded"
+    client.delete("/api/v1/cart", headers=ch)
+
+
 def test_address_can_be_edited():
     token = _login("customer@wishbox.com", "customer123")
     h = {"Authorization": f"Bearer {token}"}

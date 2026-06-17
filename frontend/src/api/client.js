@@ -75,6 +75,9 @@ export const ordersApi = {
   list: () => api.get('/orders'),
   get: (num) => api.get(`/orders/${num}`),
   invoice: (num) => api.get(`/orders/${num}/invoice`),
+  shipment: (num) => api.get(`/orders/${num}/shipment`),
+  requestReturn: (num, d) => api.post(`/orders/${num}/returns`, d),
+  listReturns: (num) => api.get(`/orders/${num}/returns`),
 };
 export const couponsApi = { validate: (code, subtotal) => api.post('/coupons/validate', { code, subtotal }) };
 export const paymentsApi = {
@@ -119,4 +122,9 @@ export const adminApi = {
   deleteCoupon: (id) => api.delete(`/admin/coupons/${id}`),
   vendors: () => api.get('/admin/vendors'),
   lowStock: () => api.get('/admin/inventory/low-stock'),
+  upsertShipment: (orderId, d) => api.post(`/admin/orders/${orderId}/shipment`, d),
+  returns: (status) => api.get('/admin/returns', { params: status ? { status } : {} }),
+  updateReturn: (id, d) => api.put(`/admin/returns/${id}`, d),
+  outbox: (status) => api.get('/admin/outbox', { params: status ? { status } : {} }),
+  runWorkerTick: () => api.post('/admin/worker/run-tick'),
 };

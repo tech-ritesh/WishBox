@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingBag, Ticket, Gift, LogOut } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Ticket, Gift, LogOut, RotateCcw, Mail } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const links = [
@@ -7,6 +7,8 @@ const links = [
   ['/admin/products', 'Products', Package],
   ['/admin/orders', 'Orders', ShoppingBag],
   ['/admin/coupons', 'Coupons', Ticket],
+  ['/admin/returns', 'Returns', RotateCcw],
+  ['/admin/outbox', 'Outbox', Mail],
 ];
 
 export default function AdminLayout() {
