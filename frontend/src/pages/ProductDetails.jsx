@@ -132,9 +132,8 @@ export default function ProductDetails() {
                   onChange={(e) => setQty(Math.max(1, Number(e.target.value)))} className="input w-20" />
                 <button disabled={effStock <= 0 || needsVariant}
                   onClick={() => {
-                    if (!user) { window.location.href = '/login'; return; }
                     const customization = product.is_customizable && personalMsg.trim() ? { message: personalMsg.trim() } : null;
-                    add(product.id, qty, customization, variant?.id ?? null);
+                    add(product, qty, customization, variant);
                   }}
                   className="btn-primary flex-1">
                   <ShoppingCart size={18} /> {needsVariant ? 'Select an option' : 'Add to cart'}

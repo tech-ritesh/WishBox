@@ -7,10 +7,16 @@ from app import models, schemas
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.services.fulfillment import create_return
-from app.services.orders import place_order
+from app.services.orders import place_order, place_guest_order
 from app.services.tax import get_or_create_invoice
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
+
+
+@router.post("/guest", response_model=schemas.OrderOut, status_code=201)
+def create_guest_order(data: schemas.GuestOrderCreate, db: Session = Depends(get_db)):
+    """Place an order without an account (creates a shadow guest account by email)."""
+    return place_guest_order(db, data)
 
 
 def _my_order(db: Session, user: models.User, order_number: str) -> models.Order:

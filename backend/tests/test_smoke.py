@@ -423,6 +423,50 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_guest_checkout_and_claim():
+    product = _orderable_product(min_stock=3)
+    email = "guestbuyer@example.com"
+    # clean slate so the claim assertion is deterministic across re-runs
+    _db = SessionLocal()
+    try:
+        u = _db.query(models.User).filter(models.User.email == email).first()
+        if u:
+            _db.query(models.Order).filter(models.Order.user_id == u.id).delete()
+            _db.query(models.CartItem).filter(models.CartItem.user_id == u.id).delete()
+            _db.query(models.Address).filter(models.Address.user_id == u.id).delete()
+            _db.delete(u)
+            _db.commit()
+    finally:
+        _db.close()
+
+    order = client.post("/api/v1/orders/guest", json={
+        "email": email, "full_name": "Guest Buyer", "phone": "9999999999",
+        "address_line1": "1 Guest St", "city": "Pune", "state": "MH", "postal_code": "411001",
+        "payment_method": "cod",
+        "items": [{"product_id": product["id"], "quantity": 1}],
+    })
+    assert order.status_code == 201, order.text
+    assert order.json()["status"] == "confirmed"
+
+    # claiming the guest account via registration works and logs in
+    reg = client.post("/api/v1/auth/register", json={
+        "email": email, "password": "claimed12345", "full_name": "Guest Buyer",
+    })
+    assert reg.status_code == 201, reg.text
+    token = reg.json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+    # the claimed account retains its guest order history
+    assert len(client.get("/api/v1/orders", headers=h).json()) >= 1
+
+    # guest checkout against a real (non-guest) account is rejected
+    blocked = client.post("/api/v1/orders/guest", json={
+        "email": "customer@wishbox.com", "full_name": "X",
+        "address_line1": "1 St", "city": "Pune", "state": "MH", "postal_code": "411001",
+        "items": [{"product_id": product["id"], "quantity": 1}],
+    })
+    assert blocked.status_code == 409
+
+
 def test_product_variant_purchase_flow():
     admin = _login("admin@wishbox.com", "admin12345")
     ah = {"Authorization": f"Bearer {admin}"}

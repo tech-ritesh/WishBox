@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { authApi, ordersApi, couponsApi, paymentsApi } from '../api/client';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { inr } from '../utils/format';
 
 const SLOTS = ['09:00-12:00', '12:00-15:00', '15:00-18:00', '18:00-21:00', 'midnight'];
 
 export default function Checkout() {
-  const { cart, refresh } = useCart();
+  const { cart, refresh, clear } = useCart();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [addresses, setAddresses] = useState([]);
   const [addressId, setAddressId] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [newAddr, setNewAddr] = useState({ recipient_name: '', phone: '', address_line1: '', city: '', state: '', postal_code: '' });
+  const [guest, setGuest] = useState({ email: '', full_name: '' });
   const [payment, setPayment] = useState('cod');
   const [coupon, setCoupon] = useState('');
   const [discount, setDiscount] = useState(0);
@@ -22,6 +25,7 @@ export default function Checkout() {
   const [schedule, setSchedule] = useState({ date: '', slot: '' });
   const [error, setError] = useState('');
   const [placing, setPlacing] = useState(false);
+  const [placedNumber, setPlacedNumber] = useState('');
 
   const loadAddresses = () => authApi.addresses().then((r) => {
     setAddresses(r.data);
@@ -29,7 +33,7 @@ export default function Checkout() {
     if (def) setAddressId(def.id);
     setShowNew(r.data.length === 0);
   });
-  useEffect(() => { loadAddresses(); }, []);
+  useEffect(() => { if (user) loadAddresses(); }, [user]);
 
   const subtotal = Number(cart.subtotal);
   const shipping = (subtotal - discount) >= 999 ? 0 : (subtotal > 0 ? 49 : 0);
@@ -98,7 +102,34 @@ export default function Checkout() {
     });
   };
 
+  const placeGuestOrder = async () => {
+    if (!guest.email || !guest.full_name) { setError('Please enter your name and email'); return; }
+    const a = newAddr;
+    if (!a.address_line1 || !a.city || !a.state || !a.postal_code) { setError('Please complete the delivery address'); return; }
+    setPlacing(true); setError('');
+    try {
+      const { data } = await ordersApi.createGuest({
+        email: guest.email, full_name: guest.full_name, phone: a.phone || null,
+        recipient_name: a.recipient_name || guest.full_name,
+        address_line1: a.address_line1, city: a.city, state: a.state, postal_code: a.postal_code,
+        payment_method: 'cod', coupon_code: coupon || null,
+        is_gift: isGift, gift_message: giftMessage || null,
+        scheduled_delivery_date: schedule.date || null, delivery_slot: schedule.slot || null,
+        items: cart.items.map((i) => ({
+          product_id: i.product_id, variant_id: i.variant_id ?? null,
+          quantity: i.quantity, customization_details: i.customization_details || null,
+        })),
+      });
+      await clear();
+      setPlacedNumber(data.order_number);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Order failed');
+      setPlacing(false);
+    }
+  };
+
   const placeOrder = async () => {
+    if (!user) return placeGuestOrder();
     if (!addressId) { setError('Please select an address'); return; }
     setPlacing(true); setError('');
     try {
@@ -118,30 +149,70 @@ export default function Checkout() {
     }
   };
 
+  if (placedNumber) {
+    return (
+      <div className="mx-auto max-w-lg text-center">
+        <div className="card p-8">
+          <p className="text-5xl">🎉</p>
+          <h1 className="mt-3 text-2xl font-bold">Order placed!</h1>
+          <p className="mt-2 text-slate-600">Your order number is <b>{placedNumber}</b>. A confirmation has been sent to <b>{guest.email}</b>.</p>
+          <p className="mt-3 text-sm text-slate-500">Want to track it? <Link to="/register" className="text-brand-600">Create an account</Link> with this email to see your order history.</p>
+          <Link to="/shop" className="btn-primary mt-5 inline-block">Continue shopping</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6 md:grid-cols-3">
       <div className="md:col-span-2 space-y-5">
         <h1 className="text-2xl font-bold">Checkout</h1>
 
+        {!user && (
+          <section className="card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold">Contact</h2>
+              <span className="text-sm text-slate-500">Have an account? <Link to="/login" className="text-brand-600">Log in</Link></span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <input required placeholder="Full name" value={guest.full_name}
+                onChange={(e) => setGuest({ ...guest, full_name: e.target.value })} className="input" />
+              <input required type="email" placeholder="Email" value={guest.email}
+                onChange={(e) => setGuest({ ...guest, email: e.target.value })} className="input" />
+            </div>
+          </section>
+        )}
+
         <section className="card p-5">
           <h2 className="font-bold">Delivery address</h2>
-          <div className="mt-3 space-y-2">
-            {addresses.map((a) => (
-              <label key={a.id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${addressId === a.id ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}>
-                <input type="radio" checked={addressId === a.id} onChange={() => setAddressId(a.id)} />
-                <span className="text-sm">{a.recipient_name}, {a.address_line1}, {a.city}, {a.state} - {a.postal_code} · {a.phone}</span>
-              </label>
-            ))}
-          </div>
-          <button onClick={() => setShowNew(!showNew)} className="mt-2 text-sm text-brand-600">+ Add new address</button>
-          {showNew && (
-            <form onSubmit={saveAddress} className="mt-3 grid grid-cols-2 gap-2">
+          {user ? (
+            <>
+              <div className="mt-3 space-y-2">
+                {addresses.map((a) => (
+                  <label key={a.id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${addressId === a.id ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}>
+                    <input type="radio" checked={addressId === a.id} onChange={() => setAddressId(a.id)} />
+                    <span className="text-sm">{a.recipient_name}, {a.address_line1}, {a.city}, {a.state} - {a.postal_code} · {a.phone}</span>
+                  </label>
+                ))}
+              </div>
+              <button onClick={() => setShowNew(!showNew)} className="mt-2 text-sm text-brand-600">+ Add new address</button>
+              {showNew && (
+                <form onSubmit={saveAddress} className="mt-3 grid grid-cols-2 gap-2">
+                  {[['recipient_name', 'Recipient name'], ['phone', 'Phone'], ['address_line1', 'Address'], ['city', 'City'], ['state', 'State'], ['postal_code', 'PIN code']].map(([k, label]) => (
+                    <input key={k} required placeholder={label} value={newAddr[k]}
+                      onChange={(e) => setNewAddr({ ...newAddr, [k]: e.target.value })} className="input" />
+                  ))}
+                  <button className="btn-primary col-span-2">Save address</button>
+                </form>
+              )}
+            </>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {[['recipient_name', 'Recipient name'], ['phone', 'Phone'], ['address_line1', 'Address'], ['city', 'City'], ['state', 'State'], ['postal_code', 'PIN code']].map(([k, label]) => (
-                <input key={k} required placeholder={label} value={newAddr[k]}
+                <input key={k} placeholder={label} value={newAddr[k]}
                   onChange={(e) => setNewAddr({ ...newAddr, [k]: e.target.value })} className="input" />
               ))}
-              <button className="btn-primary col-span-2">Save address</button>
-            </form>
+            </div>
           )}
         </section>
 
@@ -169,13 +240,17 @@ export default function Checkout() {
 
         <section className="card p-5">
           <h2 className="font-bold">Payment</h2>
-          <div className="mt-2 flex gap-3">
-            {[['cod', 'Cash on Delivery'], ['card', 'Card (mock)'], ['upi', 'UPI (mock)']].map(([v, label]) => (
-              <label key={v} className={`btn ${payment === v ? 'btn-primary' : 'btn-ghost'} text-sm`}>
-                <input type="radio" className="hidden" checked={payment === v} onChange={() => setPayment(v)} /> {label}
-              </label>
-            ))}
-          </div>
+          {user ? (
+            <div className="mt-2 flex gap-3">
+              {[['cod', 'Cash on Delivery'], ['card', 'Card (mock)'], ['upi', 'UPI (mock)']].map(([v, label]) => (
+                <label key={v} className={`btn ${payment === v ? 'btn-primary' : 'btn-ghost'} text-sm`}>
+                  <input type="radio" className="hidden" checked={payment === v} onChange={() => setPayment(v)} /> {label}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">Cash on Delivery. <Link to="/login" className="text-brand-600">Log in</Link> to pay online (card / UPI).</p>
+          )}
         </section>
       </div>
 

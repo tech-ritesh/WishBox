@@ -9,7 +9,6 @@ export default function Cart() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  if (!user) return <p className="py-20 text-center">Please <Link to="/login" className="text-brand-600">sign in</Link> to view your cart.</p>;
   if (cart.items.length === 0) return (
     <div className="py-20 text-center text-slate-500">
       <p className="text-5xl">🛒</p>
@@ -27,7 +26,8 @@ export default function Cart() {
             <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-brand-50 text-2xl">🎁</div>
             <div className="flex-1">
               <Link to={`/product/${item.product.slug}`} className="font-medium hover:text-brand-600">{item.product.name}</Link>
-              <p className="text-sm text-slate-500">{inr(item.product.discount_price ?? item.product.price)}</p>
+              {item.variant && <p className="text-xs text-slate-500">{item.variant.name}</p>}
+              <p className="text-sm text-slate-500">{inr(Number(item.product.discount_price ?? item.product.price) + (item.variant ? Number(item.variant.price_delta) : 0))}</p>
               {item.customization_details?.message && (
                 <p className="text-xs text-brand-600">✨ “{item.customization_details.message}”</p>
               )}

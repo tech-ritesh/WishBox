@@ -41,7 +41,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
+        <Route path="/checkout" element={<Checkout />} />
         <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
         <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
         <Route path="/orders/:orderNumber" element={<RequireAuth><OrderTracking /></RequireAuth>} />

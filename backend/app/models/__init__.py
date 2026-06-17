@@ -76,6 +76,7 @@ class User(Base, TimestampMixin):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.customer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_guest: Mapped[bool] = mapped_column(Boolean, default=False)  # checkout-only shadow account
     last_login_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
     corporate_account_id: Mapped[int] = mapped_column(ForeignKey("corporate_accounts.id"), nullable=True)
 

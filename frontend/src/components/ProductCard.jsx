@@ -37,7 +37,7 @@ export default function ProductCard({ product }) {
         <div className="mt-3 flex gap-2">
           <button
             disabled={product.stock <= 0}
-            onClick={() => user ? add(product.id) : (window.location.href = '/login')}
+            onClick={() => add(product)}
             className="btn-primary flex-1 text-sm py-1.5"
           >
             <ShoppingCart size={16} /> {product.stock > 0 ? 'Add' : 'Sold out'}

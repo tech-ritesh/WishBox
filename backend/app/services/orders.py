@@ -13,6 +13,8 @@ from app import models
 from app.services import notifications
 from app.services.common import generate_order_number, money
 from app.services.coupons import CouponError, evaluate_coupon
+from app.core.security import hash_password
+import secrets
 
 FREE_SHIPPING_THRESHOLD = Decimal("999")
 SHIPPING_FEE = Decimal("49")
@@ -161,6 +163,71 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
     db.commit()
     db.refresh(order)
     return order
+
+
+def place_guest_order(db: Session, data) -> models.Order:
+    """Guest checkout: reuses the authenticated order path via a shadow account.
+
+    A lightweight is_guest user (keyed by email) is created/reused, the posted
+    items are staged as its cart + a transient address, then the normal
+    place_order runs — so pricing, coupons, stock, invoice and emails all behave
+    identically to a logged-in order.
+    """
+    user = db.query(models.User).filter(models.User.email == data.email).first()
+    if user and not user.is_guest:
+        raise HTTPException(status_code=409, detail="An account exists for this email — please log in to check out")
+    if not user:
+        user = models.User(
+            email=data.email,
+            password_hash=hash_password(secrets.token_urlsafe(16)),  # unusable until claimed
+            full_name=data.full_name,
+            phone=data.phone,
+            role=models.UserRole.customer,
+            is_guest=True,
+        )
+        db.add(user)
+        db.flush()
+
+    if not data.items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    # Transient shipping address
+    address = models.Address(
+        user_id=user.id, recipient_name=data.recipient_name or data.full_name,
+        phone=data.phone or "", address_line1=data.address_line1, address_line2=data.address_line2,
+        city=data.city, state=data.state, postal_code=data.postal_code, country=data.country or "India",
+    )
+    db.add(address)
+    db.flush()
+
+    # Stage the posted items as the guest's cart
+    db.query(models.CartItem).filter(models.CartItem.user_id == user.id).delete()
+    for it in data.items:
+        db.add(models.CartItem(
+            user_id=user.id, product_id=it.product_id, variant_id=it.variant_id,
+            quantity=it.quantity, customization_details=it.customization_details,
+        ))
+    db.flush()
+
+    order_input = OrderInput(
+        address_id=address.id, payment_method=data.payment_method, coupon_code=data.coupon_code,
+        is_gift=data.is_gift, gift_message=data.gift_message,
+        scheduled_delivery_date=data.scheduled_delivery_date, delivery_slot=data.delivery_slot,
+    )
+    return place_order(db, user, order_input)
+
+
+class OrderInput:
+    """Lightweight adapter so place_order can consume guest data unchanged."""
+    def __init__(self, address_id, payment_method, coupon_code, is_gift, gift_message,
+                 scheduled_delivery_date, delivery_slot):
+        self.address_id = address_id
+        self.payment_method = payment_method
+        self.coupon_code = coupon_code
+        self.is_gift = is_gift
+        self.gift_message = gift_message
+        self.scheduled_delivery_date = scheduled_delivery_date
+        self.delivery_slot = delivery_slot
 
 
 def change_status(db: Session, order: models.Order, data, actor: models.User) -> models.Order:

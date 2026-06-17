@@ -327,6 +327,33 @@ class OrderCreate(BaseModel):
     delivery_slot: Optional[str] = None
 
 
+class GuestOrderItem(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    quantity: int = Field(default=1, ge=1)
+    customization_details: Optional[Dict[str, Any]] = None
+
+
+class GuestOrderCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: Optional[str] = None
+    recipient_name: Optional[str] = None
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: str
+    state: str
+    postal_code: str
+    country: str = "India"
+    payment_method: str = "cod"
+    coupon_code: Optional[str] = None
+    is_gift: bool = False
+    gift_message: Optional[str] = None
+    scheduled_delivery_date: Optional[dt.date] = None
+    delivery_slot: Optional[str] = None
+    items: List[GuestOrderItem] = []
+
+
 class OrderOut(BaseModel):
     model_config = ORM
     id: int

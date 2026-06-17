@@ -83,6 +83,7 @@ export const cartApi = {
 };
 export const ordersApi = {
   create: (d) => api.post('/orders', d),
+  createGuest: (d) => api.post('/orders/guest', d),
   list: () => api.get('/orders'),
   get: (num) => api.get(`/orders/${num}`),
   invoice: (num) => api.get(`/orders/${num}/invoice`),

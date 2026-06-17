@@ -58,8 +58,18 @@ def _tokens(user: models.User) -> dict:
 
 @router.post("/register", response_model=schemas.TokenPair, status_code=201)
 def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
-    if db.query(models.User).filter(models.User.email == data.email).first():
+    existing = db.query(models.User).filter(models.User.email == data.email).first()
+    if existing and not existing.is_guest:
         raise HTTPException(status_code=400, detail="Email already registered")
+    if existing and existing.is_guest:
+        # Claim the guest account: keep its order history, set a real password.
+        existing.password_hash = hash_password(data.password)
+        existing.full_name = data.full_name
+        existing.phone = data.phone or existing.phone
+        existing.is_guest = False
+        db.commit()
+        db.refresh(existing)
+        return _tokens(existing)
     # NOTE: unlike the reference, the first user is NOT auto-promoted to admin.
     user = models.User(
         email=data.email,
