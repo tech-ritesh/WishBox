@@ -423,6 +423,70 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def _wallet_balance(h):
+    return float(client.get("/api/v1/wallet", headers=h).json()["balance"])
+
+
+def test_wallet_loyalty_giftcard_and_redeem():
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    product = _orderable_product(min_stock=4)
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "W", "phone": "9999999999",
+        "address_line1": "1 W St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+
+    bal0 = _wallet_balance(h)
+    # placing an order earns 2% cashback
+    client.delete("/api/v1/cart", headers=h)
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    o1 = client.post("/api/v1/orders", headers=h, json={"address_id": addr["id"], "payment_method": "cod"}).json()
+    bal1 = _wallet_balance(h)
+    assert bal1 > bal0, "order should earn wallet credit"
+    assert abs((bal1 - bal0) - round(float(o1["total_amount"]) * 0.02, 2)) < 0.05
+
+    # gift card buy + redeem tops up the wallet
+    gc = client.post("/api/v1/gift-cards", headers=h, json={"amount": 500})
+    assert gc.status_code == 201, gc.text
+    client.post("/api/v1/gift-cards/redeem", headers=h, json={"code": gc.json()["code"]})
+    bal2 = _wallet_balance(h)
+    assert abs(bal2 - (bal1 + 500)) < 0.05
+
+    # redeem wallet credit at checkout
+    client.delete("/api/v1/cart", headers=h)
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    o2 = client.post("/api/v1/orders", headers=h, json={
+        "address_id": addr["id"], "payment_method": "cod", "wallet_redeem": 100,
+    }).json()
+    assert float(o2["discount_amount"]) >= 100, "wallet redemption should discount the order"
+    client.delete("/api/v1/cart", headers=h)
+
+
+def test_referral_rewards_both_parties():
+    ref = _login("customer@wishbox.com", "customer123")
+    rh = {"Authorization": f"Bearer {ref}"}
+    code = client.get("/api/v1/wallet/referral", headers=rh).json()["referral_code"]
+    ref_bal_before = _wallet_balance(rh)
+
+    email = "referree@example.com"
+    _db = SessionLocal()
+    try:
+        u = _db.query(models.User).filter(models.User.email == email).first()
+        if u:
+            _db.query(models.WalletTransaction).filter(models.WalletTransaction.user_id == u.id).delete()
+            _db.delete(u); _db.commit()
+    finally:
+        _db.close()
+
+    reg = client.post("/api/v1/auth/register", json={
+        "email": email, "password": "referred12345", "full_name": "Referree", "referral_code": code,
+    })
+    assert reg.status_code == 201, reg.text
+    nh = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+    assert _wallet_balance(nh) == 100.0, "new user gets referral credit"
+    assert _wallet_balance(rh) == ref_bal_before + 100.0, "referrer gets referral credit"
+
+
 def test_reviews_helpful_moderation_and_qa():
     admin = _login("admin@wishbox.com", "admin12345")
     ah = {"Authorization": f"Bearer {admin}"}

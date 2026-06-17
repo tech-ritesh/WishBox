@@ -81,6 +81,16 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
         corp = money(subtotal * money(user.corporate_account.discount_percentage) / Decimal(100))
         discount = money(discount + corp)
 
+    # Wallet redemption (loyalty/store credit) — applied on top of discounts.
+    wallet_used = Decimal(0)
+    requested = money(getattr(data, "wallet_redeem", 0) or 0)
+    if requested > 0 and not user.is_guest:
+        from app.services import wallet as wallet_service
+        bal = wallet_service.balance(db, user.id)
+        redeemable = max(subtotal - discount, Decimal(0))
+        wallet_used = min(requested, bal, redeemable)
+        discount = money(discount + wallet_used)
+
     discounted = max(subtotal - discount, Decimal(0))
     shipping = Decimal(0) if discounted >= FREE_SHIPPING_THRESHOLD else SHIPPING_FEE
     total = money(discounted + shipping)
@@ -157,6 +167,13 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
             f"{order.total_amount} {('INR')} is confirmed. Track it any time in your account.",
             user_id=user.id,
         )
+
+    # Wallet: debit any redemption, then earn loyalty cashback on the order.
+    if wallet_used > 0 or not user.is_guest:
+        from app.services import wallet as wallet_service
+        if wallet_used > 0:
+            wallet_service.debit(db, user.id, wallet_used, "redeem", order.order_number)
+        wallet_service.earn_on_order(db, user, order)
 
     # Clear cart
     db.query(models.CartItem).filter(models.CartItem.user_id == user.id).delete()

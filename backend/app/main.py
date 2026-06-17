@@ -11,7 +11,8 @@ from app import __version__
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.api.routers import (
-    admin, auth, cart, categories, engagement, hampers, orders, payments, products, storefront,
+    admin, auth, cart, categories, engagement, hampers, orders, payments, products,
+    storefront, wallet,
 )
 from app.services.worker import start_worker
 
@@ -48,7 +49,7 @@ os.makedirs(settings.STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
 
 API = "/api/v1"
-for r in (auth, products, categories, cart, orders, payments, engagement, hampers, storefront, admin):
+for r in (auth, products, categories, cart, orders, payments, engagement, hampers, storefront, wallet, admin):
     app.include_router(r.router, prefix=API)
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { authApi, ordersApi, couponsApi, paymentsApi } from '../api/client';
+import { authApi, ordersApi, couponsApi, paymentsApi, walletApi } from '../api/client';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { inr } from '../utils/format';
@@ -26,6 +26,10 @@ export default function Checkout() {
   const [error, setError] = useState('');
   const [placing, setPlacing] = useState(false);
   const [placedNumber, setPlacedNumber] = useState('');
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [useWallet, setUseWallet] = useState(false);
+
+  useEffect(() => { if (user) walletApi.get().then((r) => setWalletBalance(Number(r.data.balance))).catch(() => {}); }, [user]);
 
   const loadAddresses = () => authApi.addresses().then((r) => {
     setAddresses(r.data);
@@ -36,8 +40,11 @@ export default function Checkout() {
   useEffect(() => { if (user) loadAddresses(); }, [user]);
 
   const subtotal = Number(cart.subtotal);
-  const shipping = (subtotal - discount) >= 999 ? 0 : (subtotal > 0 ? 49 : 0);
-  const total = Math.max(subtotal - discount, 0) + shipping;
+  const afterDiscount = Math.max(subtotal - discount, 0);
+  const walletRedeem = useWallet ? Math.min(walletBalance, afterDiscount) : 0;
+  const afterWallet = Math.max(afterDiscount - walletRedeem, 0);
+  const shipping = afterWallet >= 999 ? 0 : (subtotal > 0 ? 49 : 0);
+  const total = afterWallet + shipping;
 
   const applyCoupon = async () => {
     try {
@@ -135,6 +142,7 @@ export default function Checkout() {
     try {
       const { data } = await ordersApi.create({
         address_id: addressId, payment_method: payment, coupon_code: coupon || null,
+        wallet_redeem: walletRedeem || 0,
         is_gift: isGift, gift_message: giftMessage || null,
         scheduled_delivery_date: schedule.date || null, delivery_slot: schedule.slot || null,
       });
@@ -261,9 +269,16 @@ export default function Checkout() {
           <button onClick={applyCoupon} className="btn-ghost text-sm">Apply</button>
         </div>
         {couponMsg && <p className="mt-1 text-xs text-brand-600">{couponMsg}</p>}
+        {user && walletBalance > 0 && (
+          <label className="mt-3 flex items-center gap-2 rounded-lg bg-brand-50 p-2 text-sm">
+            <input type="checkbox" checked={useWallet} onChange={(e) => setUseWallet(e.target.checked)} />
+            Use wallet credit ({inr(walletBalance)} available)
+          </label>
+        )}
         <div className="mt-4 space-y-1 text-sm">
           <div className="flex justify-between"><span>Subtotal</span><span>{inr(subtotal)}</span></div>
           <div className="flex justify-between text-green-600"><span>Discount</span><span>-{inr(discount)}</span></div>
+          {walletRedeem > 0 && <div className="flex justify-between text-green-600"><span>Wallet credit</span><span>-{inr(walletRedeem)}</span></div>}
           <div className="flex justify-between"><span>Shipping</span><span>{shipping === 0 ? 'FREE' : inr(shipping)}</span></div>
           <div className="mt-2 flex justify-between border-t pt-2 font-bold"><span>Total</span><span>{inr(total)}</span></div>
         </div>

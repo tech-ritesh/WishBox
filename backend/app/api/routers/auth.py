@@ -15,6 +15,7 @@ from app.core.security import (
     hash_password, verify_password,
 )
 from app.services import notifications
+from app.services import wallet as wallet_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -68,6 +69,8 @@ def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
         existing.phone = data.phone or existing.phone
         existing.is_guest = False
         db.commit()
+        if data.referral_code:
+            wallet_service.apply_referral(db, existing, data.referral_code)
         db.refresh(existing)
         return _tokens(existing)
     # NOTE: unlike the reference, the first user is NOT auto-promoted to admin.
@@ -81,6 +84,8 @@ def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    if data.referral_code:
+        wallet_service.apply_referral(db, user, data.referral_code)
     db.add(models.Notification(
         user_id=user.id, type="promo", title="Welcome to WishBox! 🎁",
         body="Here's 10% off your first order with code WELCOME10.",

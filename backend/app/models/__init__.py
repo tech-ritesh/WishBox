@@ -77,6 +77,8 @@ class User(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False)  # checkout-only shadow account
+    referral_code: Mapped[str] = mapped_column(String, nullable=True, unique=True, index=True)
+    referred_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
     last_login_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
     corporate_account_id: Mapped[int] = mapped_column(ForeignKey("corporate_accounts.id"), nullable=True)
 
@@ -564,6 +566,36 @@ class SavedPaymentMethod(Base):
     last4: Mapped[str] = mapped_column(String, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# --- Wallet (loyalty points / store credit / gift-card redemption) -----------
+class WalletTransaction(Base):
+    """A single credit/debit on a user's wallet. Balance = SUM(amount).
+
+    amount is in rupees; positive = credit (earned/refunded/gift card),
+    negative = debit (redeemed at checkout).
+    """
+    __tablename__ = "wallet_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False)  # earn|redeem|giftcard|referral|refund|adjust
+    reference: Mapped[str] = mapped_column(String, nullable=True)  # order number / gift card code
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+
+
+class GiftCard(Base, TimestampMixin):
+    __tablename__ = "gift_cards"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    initial_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    balance: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    purchaser_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    recipient_email: Mapped[str] = mapped_column(String, nullable=True)
+    message: Mapped[str] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 # --- Corporate gifting -------------------------------------------------------

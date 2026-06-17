@@ -127,6 +127,13 @@ export const hampersApi = {
   create: (d) => api.post('/hampers', d),
 };
 export const recommendationsApi = { smart: (d) => api.post('/recommendations/smart', d) };
+export const walletApi = {
+  get: () => api.get('/wallet'),
+  referral: () => api.get('/wallet/referral'),
+  giftCards: () => api.get('/gift-cards'),
+  buyGiftCard: (d) => api.post('/gift-cards', d),
+  redeemGiftCard: (code) => api.post('/gift-cards/redeem', { code }),
+};
 export const adminApi = {
   analytics: () => api.get('/admin/analytics'),
   customers: () => api.get('/admin/customers'),

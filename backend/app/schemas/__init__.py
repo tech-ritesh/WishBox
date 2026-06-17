@@ -26,6 +26,7 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=8)
     full_name: str = Field(..., min_length=1)
     phone: Optional[str] = None
+    referral_code: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -321,6 +322,7 @@ class OrderCreate(BaseModel):
     address_id: int
     payment_method: str = "cod"
     coupon_code: Optional[str] = None
+    wallet_redeem: Decimal = Decimal(0)   # amount of wallet credit to apply
     is_gift: bool = False
     gift_message: Optional[str] = None
     scheduled_delivery_date: Optional[dt.date] = None
@@ -658,6 +660,47 @@ class SavedPaymentMethodOut(BaseModel):
     last4: Optional[str] = None
     is_default: bool
     created_at: dt.datetime
+
+
+# --- Wallet / gift cards / referral ------------------------------------------
+class WalletTxnOut(BaseModel):
+    model_config = ORM
+    id: int
+    amount: Decimal
+    reason: str
+    reference: Optional[str] = None
+    created_at: dt.datetime
+
+
+class WalletOut(BaseModel):
+    balance: Decimal
+    transactions: List[WalletTxnOut] = []
+
+
+class GiftCardCreate(BaseModel):
+    amount: Decimal
+    recipient_email: Optional[EmailStr] = None
+    message: Optional[str] = None
+
+
+class GiftCardOut(BaseModel):
+    model_config = ORM
+    id: int
+    code: str
+    initial_amount: Decimal
+    balance: Decimal
+    recipient_email: Optional[str] = None
+    message: Optional[str] = None
+    is_active: bool
+
+
+class GiftCardRedeem(BaseModel):
+    code: str
+
+
+class ReferralOut(BaseModel):
+    referral_code: str
+    reward: Decimal
 
 
 # --- Vendors -----------------------------------------------------------------
