@@ -307,6 +307,27 @@ class OrderStatusUpdate(BaseModel):
     note: Optional[str] = None
 
 
+# --- Payments ----------------------------------------------------------------
+class PaymentCreateRequest(BaseModel):
+    order_number: str
+
+
+class PaymentCreateResponse(BaseModel):
+    provider: str
+    provider_order_id: str
+    amount: int           # minor units (paise)
+    currency: str = "INR"
+    order_number: str
+    key_id: str
+    mock: Optional[Dict[str, str]] = None  # mock gateway hands back a valid payment_id+signature
+
+
+class PaymentVerifyRequest(BaseModel):
+    provider_order_id: str
+    provider_payment_id: str
+    provider_signature: str
+
+
 # --- Coupons -----------------------------------------------------------------
 class CouponCreate(BaseModel):
     code: str

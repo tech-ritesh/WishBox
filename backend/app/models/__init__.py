@@ -323,6 +323,26 @@ class OrderStatusHistory(Base):
     order = relationship("Order", back_populates="history")
 
 
+# --- Payments ----------------------------------------------------------------
+class Payment(Base, TimestampMixin):
+    """Gateway transaction record. One order may have several attempts."""
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String, default="mock")  # mock | razorpay
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String, default="INR")
+    # Provider identifiers (Razorpay: order_id / payment_id / signature)
+    provider_order_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    provider_payment_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    provider_signature: Mapped[str] = mapped_column(String, nullable=True)
+    status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
+    error_reason: Mapped[str] = mapped_column(String, nullable=True)
+
+    order = relationship("Order")
+
+
 # --- Promotions --------------------------------------------------------------
 class Coupon(Base, TimestampMixin):
     __tablename__ = "coupons"

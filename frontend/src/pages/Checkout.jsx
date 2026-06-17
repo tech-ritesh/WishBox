@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, ordersApi, couponsApi } from '../api/client';
+import { authApi, ordersApi, couponsApi, paymentsApi } from '../api/client';
 import { useCart } from '../context/CartContext';
 import { inr } from '../utils/format';
 
@@ -51,6 +51,53 @@ export default function Checkout() {
     setShowNew(false);
   };
 
+  const loadRazorpay = () => new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+
+  // Runs the online gateway for an already-created (pending) order.
+  const payOnline = async (orderNumber) => {
+    const { data: pay } = await paymentsApi.create(orderNumber);
+    if (pay.provider === 'mock') {
+      // Local mock gateway: it handed us a valid payment_id + signature.
+      await paymentsApi.verify({
+        provider_order_id: pay.provider_order_id,
+        provider_payment_id: pay.mock.payment_id,
+        provider_signature: pay.mock.signature,
+      });
+      return;
+    }
+    // Real Razorpay checkout
+    const ok = await loadRazorpay();
+    if (!ok) throw new Error('Could not load payment gateway');
+    await new Promise((resolve, reject) => {
+      const rzp = new window.Razorpay({
+        key: pay.key_id,
+        amount: pay.amount,
+        currency: pay.currency,
+        name: 'WishBox',
+        order_id: pay.provider_order_id,
+        handler: async (resp) => {
+          try {
+            await paymentsApi.verify({
+              provider_order_id: resp.razorpay_order_id,
+              provider_payment_id: resp.razorpay_payment_id,
+              provider_signature: resp.razorpay_signature,
+            });
+            resolve();
+          } catch (e) { reject(e); }
+        },
+        modal: { ondismiss: () => reject(new Error('Payment cancelled')) },
+      });
+      rzp.open();
+    });
+  };
+
   const placeOrder = async () => {
     if (!addressId) { setError('Please select an address'); return; }
     setPlacing(true); setError('');
@@ -60,10 +107,13 @@ export default function Checkout() {
         is_gift: isGift, gift_message: giftMessage || null,
         scheduled_delivery_date: schedule.date || null, delivery_slot: schedule.slot || null,
       });
+      if (payment !== 'cod') {
+        await payOnline(data.order_number);  // confirms the order on success
+      }
       await refresh();
       navigate(`/orders/${data.order_number}`);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Order failed');
+      setError(err.response?.data?.detail || err.message || 'Order failed');
       setPlacing(false);
     }
   };

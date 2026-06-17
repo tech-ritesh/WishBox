@@ -37,6 +37,43 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     LLM_API_KEY: str = ""
 
+    # --- Payments (Razorpay). Blank keys => local MOCK gateway (offline-friendly). ---
+    PAYMENT_PROVIDER: str = "mock"          # mock | razorpay
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+
+    # --- Tax / GST ---
+    GST_PERCENT: float = 18.0               # default GST applied to taxable subtotal
+    GST_INCLUSIVE: bool = False             # False = tax added on top; True = prices already include tax
+    STORE_GSTIN: str = "27AAAAA0000A1Z5"    # seller GSTIN printed on invoices (demo value)
+
+    # --- Email (SMTP optional; blank => console + outbox only) ---
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM: str = "WishBox <no-reply@wishbox.local>"
+
+    # --- SMS (Twilio optional; blank => console + outbox only) ---
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
+
+    # --- Background worker ---
+    ENABLE_WORKER: bool = True              # in-process scheduler for reminders/outbox
+    WORKER_INTERVAL_SECONDS: int = 60
+
+    # Public base URL used to build links in emails (verification, reset, tracking)
+    APP_BASE_URL: str = "http://localhost:5173"
+
+    @property
+    def razorpay_enabled(self) -> bool:
+        return (
+            self.PAYMENT_PROVIDER.lower() == "razorpay"
+            and bool(self.RAZORPAY_KEY_ID)
+            and bool(self.RAZORPAY_KEY_SECRET)
+        )
+
     @property
     def is_production(self) -> bool:
         return self.ENV.lower() == "production"

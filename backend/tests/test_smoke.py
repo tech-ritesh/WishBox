@@ -183,3 +183,66 @@ def test_customization_message_flows_to_cart():
 
     client.delete("/api/v1/cart", headers=ch)
     client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
+
+
+def test_online_payment_flow_mock_gateway():
+    """Online order is created pending, then the mock gateway confirms it on verify."""
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "Pay Test", "phone": "9999999999",
+        "address_line1": "9 Pay St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+
+    client.delete("/api/v1/cart", headers=h)
+    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+
+    order = client.post("/api/v1/orders", headers=h, json={
+        "address_id": addr["id"], "payment_method": "upi",
+    }).json()
+    assert order["status"] == "pending", "online orders start pending until paid"
+    assert order["payment_status"] == "pending"
+
+    created = client.post("/api/v1/payments/create", headers=h,
+                          json={"order_number": order["order_number"]})
+    assert created.status_code == 200, created.text
+    pay = created.json()
+    assert pay["provider"] == "mock" and pay["mock"], "mock gateway should return a payable handle"
+
+    verified = client.post("/api/v1/payments/verify", headers=h, json={
+        "provider_order_id": pay["provider_order_id"],
+        "provider_payment_id": pay["mock"]["payment_id"],
+        "provider_signature": pay["mock"]["signature"],
+    })
+    assert verified.status_code == 200, verified.text
+    confirmed = verified.json()
+    assert confirmed["payment_status"] == "paid"
+    assert confirmed["status"] == "confirmed"
+
+    client.delete("/api/v1/cart", headers=h)
+
+
+def test_payment_verify_rejects_bad_signature():
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "Bad Sig", "phone": "9999999999",
+        "address_line1": "1 X St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    client.delete("/api/v1/cart", headers=h)
+    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    order = client.post("/api/v1/orders", headers=h, json={
+        "address_id": addr["id"], "payment_method": "card",
+    }).json()
+    pay = client.post("/api/v1/payments/create", headers=h,
+                      json={"order_number": order["order_number"]}).json()
+    bad = client.post("/api/v1/payments/verify", headers=h, json={
+        "provider_order_id": pay["provider_order_id"],
+        "provider_payment_id": "mock_pay_000000",
+        "provider_signature": "deadbeef",
+    })
+    assert bad.status_code == 400
+    client.delete("/api/v1/cart", headers=h)

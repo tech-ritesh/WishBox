@@ -71,6 +71,11 @@ export const ordersApi = {
   get: (num) => api.get(`/orders/${num}`),
 };
 export const couponsApi = { validate: (code, subtotal) => api.post('/coupons/validate', { code, subtotal }) };
+export const paymentsApi = {
+  config: () => api.get('/payments/config'),
+  create: (orderNumber) => api.post('/payments/create', { order_number: orderNumber }),
+  verify: (d) => api.post('/payments/verify', d),
+};
 export const reviewsApi = {
   list: (pid) => api.get(`/reviews/${pid}`),
   create: (d) => api.post('/reviews', d),
