@@ -24,6 +24,7 @@ import AdminOrders from './pages/admin/AdminOrders';
 import AdminCoupons from './pages/admin/AdminCoupons';
 import AdminReturns from './pages/admin/AdminReturns';
 import AdminOutbox from './pages/admin/AdminOutbox';
+import AdminReviews from './pages/admin/AdminReviews';
 
 export default function App() {
   return (
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="orders" element={<AdminOrders />} />
         <Route path="coupons" element={<AdminCoupons />} />
         <Route path="returns" element={<AdminReturns />} />
+        <Route path="reviews" element={<AdminReviews />} />
         <Route path="outbox" element={<AdminOutbox />} />
       </Route>
       <Route path="*" element={<PublicLayout />} />

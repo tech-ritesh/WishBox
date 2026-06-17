@@ -423,6 +423,46 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_reviews_helpful_moderation_and_qa():
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    leaf, _ = _find_leaf(client.get("/api/v1/categories/tree").json())
+    prod = client.post("/api/v1/admin/products", headers=ah, json={
+        "name": "PytestReview Gift", "price": 350, "stock": 5, "category_id": leaf["id"],
+    }).json()
+
+    cust = _login("customer@wishbox.com", "customer123")
+    ch = {"Authorization": f"Bearer {cust}"}
+    rev = client.post("/api/v1/reviews", headers=ch, json={
+        "product_id": prod["id"], "rating": 5, "comment": "Lovely", "image_url": "/static/x.png",
+    })
+    assert rev.status_code == 201, rev.text
+    rid = rev.json()["id"]
+    assert rev.json()["status"] == "approved"
+    assert client.get(f"/api/v1/reviews/{prod['id']}").json(), "approved review is publicly visible"
+
+    # helpful vote toggles
+    v1 = client.post(f"/api/v1/reviews/{rid}/helpful", headers=ah).json()
+    assert v1["helpful_count"] == 1 and v1["voted"] is True
+    v2 = client.post(f"/api/v1/reviews/{rid}/helpful", headers=ah).json()
+    assert v2["helpful_count"] == 0 and v2["voted"] is False
+
+    # moderation: reject hides it from the public listing
+    assert client.put(f"/api/v1/admin/reviews/{rid}", headers=ah, json={"status": "rejected"}).status_code == 200
+    assert client.get(f"/api/v1/reviews/{prod['id']}").json() == []
+
+    # Q&A: ask + staff answer
+    q = client.post(f"/api/v1/products/{prod['id']}/questions", headers=ch, json={"body": "Is it giftable?"})
+    assert q.status_code == 201, q.text
+    qid = q.json()["id"]
+    a = client.post(f"/api/v1/questions/{qid}/answers", headers=ah, json={"body": "Yes, gift-wrapped!"})
+    assert a.status_code == 201 and a.json()["is_staff_answer"] is True
+    qs = client.get(f"/api/v1/products/{prod['id']}/questions").json()
+    assert qs[0]["answers"][0]["body"] == "Yes, gift-wrapped!"
+
+    client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
+
+
 def test_guest_checkout_and_claim():
     product = _orderable_product(min_stock=3)
     email = "guestbuyer@example.com"

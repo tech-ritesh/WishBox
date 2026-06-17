@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, Truck, Sparkles } from 'lucide-react';
-import { productsApi, reviewsApi, wishlistApi, discoveryApi } from '../api/client';
+import { productsApi, reviewsApi, wishlistApi, discoveryApi, qaApi } from '../api/client';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { inr } from '../utils/format';
@@ -15,6 +15,8 @@ export default function ProductDetails() {
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [related, setRelated] = useState([]);
+  const [questions, setQuestions] = useState([]);
+  const [newQuestion, setNewQuestion] = useState('');
   const [qty, setQty] = useState(1);
   const [variant, setVariant] = useState(null);
   const [msg, setMsg] = useState('');
@@ -31,7 +33,26 @@ export default function ProductDetails() {
     productsApi.related(slug).then((r) => setRelated(r.data)).catch(() => {});
   }, [slug, user]);
 
+  useEffect(() => {
+    if (product) qaApi.list(product.id).then((r) => setQuestions(r.data)).catch(() => {});
+  }, [product?.id]);
+
   if (!product) return <Spinner />;
+
+  const voteHelpful = async (rid) => {
+    await reviewsApi.helpful(rid);
+    const rv = await reviewsApi.list(product.id);
+    setReviews(rv.data);
+  };
+  const askQuestion = async (e) => {
+    e.preventDefault();
+    if (!user) { window.location.href = '/login'; return; }
+    if (!newQuestion.trim()) return;
+    await qaApi.ask(product.id, newQuestion.trim());
+    setNewQuestion('');
+    const r = await qaApi.list(product.id);
+    setQuestions(r.data);
+  };
 
   const notifyMe = async () => {
     if (!user) { window.location.href = '/login'; return; }
@@ -172,6 +193,31 @@ export default function ProductDetails() {
               </div>
               {r.verified_purchase && <span className="badge bg-green-100 text-green-700 mt-1">Verified purchase</span>}
               <p className="mt-1 text-slate-600">{r.comment}</p>
+              {r.image_url && <img src={r.image_url} alt="review" className="mt-2 h-24 w-24 rounded object-cover" />}
+              <button onClick={() => user ? voteHelpful(r.id) : (window.location.href = '/login')}
+                className="mt-2 text-xs text-slate-500 hover:text-brand-600">👍 Helpful ({r.helpful_count})</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="mb-3 text-xl font-bold">Questions & Answers</h2>
+        <form onSubmit={askQuestion} className="card mb-4 flex gap-2 p-4">
+          <input value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)}
+            placeholder="Ask a question about this product…" className="input flex-1" />
+          <button className="btn-primary">Ask</button>
+        </form>
+        <div className="space-y-3">
+          {questions.length === 0 && <p className="text-slate-400">No questions yet. Be the first to ask!</p>}
+          {questions.map((q) => (
+            <div key={q.id} className="card p-4">
+              <p className="font-medium">Q: {q.body}</p>
+              {q.answers.map((a) => (
+                <p key={a.id} className="mt-1 text-sm text-slate-600">
+                  A: {a.body} {a.is_staff_answer && <span className="badge bg-brand-100 text-brand-700">WishBox</span>}
+                </p>
+              ))}
             </div>
           ))}
         </div>

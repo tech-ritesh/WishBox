@@ -100,6 +100,12 @@ export const paymentsApi = {
 export const reviewsApi = {
   list: (pid) => api.get(`/reviews/${pid}`),
   create: (d) => api.post('/reviews', d),
+  helpful: (id) => api.post(`/reviews/${id}/helpful`),
+};
+export const qaApi = {
+  list: (pid) => api.get(`/products/${pid}/questions`),
+  ask: (pid, body) => api.post(`/products/${pid}/questions`, { body }),
+  answer: (qid, body) => api.post(`/questions/${qid}/answers`, { body }),
 };
 export const wishlistApi = {
   list: () => api.get('/wishlist'),
@@ -137,6 +143,8 @@ export const adminApi = {
   upsertShipment: (orderId, d) => api.post(`/admin/orders/${orderId}/shipment`, d),
   returns: (status) => api.get('/admin/returns', { params: status ? { status } : {} }),
   updateReturn: (id, d) => api.put(`/admin/returns/${id}`, d),
+  reviews: (status) => api.get('/admin/reviews', { params: status ? { status } : {} }),
+  moderateReview: (id, status) => api.put(`/admin/reviews/${id}`, { status }),
   outbox: (status) => api.get('/admin/outbox', { params: status ? { status } : {} }),
   runWorkerTick: () => api.post('/admin/worker/run-tick'),
 };

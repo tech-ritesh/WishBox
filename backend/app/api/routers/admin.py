@@ -252,6 +252,44 @@ def low_stock(db: Session = Depends(get_db), _: models.User = Depends(require_st
     ).all()
 
 
+# --- Review moderation ---
+@router.get("/reviews", response_model=List[schemas.ReviewOut])
+def list_all_reviews(status: str = None, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    q = db.query(models.Review)
+    if status:
+        q = q.filter(models.Review.status == status)
+    rows = q.order_by(models.Review.created_at.desc()).limit(200).all()
+    out = []
+    for r in rows:
+        item = schemas.ReviewOut.model_validate(r)
+        item.user_name = r.user.full_name if r.user else "Anonymous"
+        out.append(item)
+    return out
+
+
+@router.put("/reviews/{review_id}", response_model=schemas.ReviewOut)
+def moderate_review(review_id: int, data: schemas.ReviewModerate,
+                    db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    review = db.get(models.Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.status = data.status
+    db.flush()
+    # keep product aggregate in sync with only-approved reviews
+    avg, cnt = db.query(func.avg(models.Review.rating), func.count(models.Review.id)).filter(
+        models.Review.product_id == review.product_id, models.Review.status == "approved"
+    ).one()
+    product = db.get(models.Product, review.product_id)
+    if product:
+        product.rating_avg = round(float(avg or 0), 2)
+        product.rating_count = int(cnt or 0)
+    db.commit()
+    db.refresh(review)
+    out = schemas.ReviewOut.model_validate(review)
+    out.user_name = review.user.full_name if review.user else "Anonymous"
+    return out
+
+
 # --- Product variants ---
 @router.get("/products/{product_id}/variants", response_model=List[schemas.ProductVariantOut])
 def list_variants(product_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):

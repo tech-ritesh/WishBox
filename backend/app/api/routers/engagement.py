@@ -31,7 +31,7 @@ def list_reviews(product_id: int, db: Session = Depends(get_db)):
     rows = (
         db.query(models.Review)
         .options(joinedload(models.Review.user))
-        .filter(models.Review.product_id == product_id)
+        .filter(models.Review.product_id == product_id, models.Review.status == "approved")
         .order_by(models.Review.created_at.desc())
         .all()
     )
@@ -60,7 +60,7 @@ def create_review(data: schemas.ReviewCreate, current_user: models.User = Depend
     )
     review = models.Review(
         user_id=current_user.id, product_id=data.product_id, rating=data.rating,
-        comment=data.comment, verified_purchase=bool(purchased),
+        comment=data.comment, image_url=data.image_url, verified_purchase=bool(purchased),
     )
     db.add(review)
     db.flush()
@@ -77,6 +77,67 @@ def create_review(data: schemas.ReviewCreate, current_user: models.User = Depend
     out = schemas.ReviewOut.model_validate(review)
     out.user_name = current_user.full_name
     return out
+
+
+@router.post("/reviews/{review_id}/helpful")
+def vote_helpful(review_id: int, current_user: models.User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Toggle a 'helpful' vote (one per user per review)."""
+    review = db.get(models.Review, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    vote = db.query(models.ReviewVote).filter(
+        models.ReviewVote.user_id == current_user.id, models.ReviewVote.review_id == review_id
+    ).first()
+    if vote:
+        db.delete(vote)
+        review.helpful_count = max(0, (review.helpful_count or 0) - 1)
+        voted = False
+    else:
+        db.add(models.ReviewVote(user_id=current_user.id, review_id=review_id))
+        review.helpful_count = (review.helpful_count or 0) + 1
+        voted = True
+    db.commit()
+    return {"helpful_count": review.helpful_count, "voted": voted}
+
+
+# --- Product Q&A ---
+@router.get("/products/{product_id}/questions", response_model=List[schemas.QuestionOut])
+def list_questions(product_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(models.ProductQuestion)
+        .options(joinedload(models.ProductQuestion.answers))
+        .filter(models.ProductQuestion.product_id == product_id)
+        .order_by(models.ProductQuestion.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/products/{product_id}/questions", response_model=schemas.QuestionOut, status_code=201)
+def ask_question(product_id: int, data: schemas.QuestionCreate,
+                 current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not db.get(models.Product, product_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    q = models.ProductQuestion(product_id=product_id, user_id=current_user.id, body=data.body)
+    db.add(q)
+    db.commit()
+    db.refresh(q)
+    return q
+
+
+@router.post("/questions/{question_id}/answers", response_model=schemas.AnswerOut, status_code=201)
+def answer_question(question_id: int, data: schemas.AnswerCreate,
+                    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.get(models.ProductQuestion, question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    is_staff = current_user.role in (models.UserRole.admin, models.UserRole.staff)
+    ans = models.ProductAnswer(question_id=question_id, user_id=current_user.id,
+                               body=data.body, is_staff_answer=is_staff)
+    db.add(ans)
+    db.commit()
+    db.refresh(ans)
+    return ans
 
 
 # --- Wishlist ---

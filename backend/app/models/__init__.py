@@ -441,11 +441,45 @@ class Review(Base, TimestampMixin):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str] = mapped_column(String, nullable=True)
     verified_purchase: Mapped[bool] = mapped_column(Boolean, default=False)
     helpful_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String, default="approved")  # approved | rejected | pending
 
     user = relationship("User", back_populates="reviews")
     product = relationship("Product", back_populates="reviews")
+
+
+class ReviewVote(Base):
+    __tablename__ = "review_votes"
+    __table_args__ = (UniqueConstraint("user_id", "review_id", name="uq_reviewvote_user_review"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    review_id: Mapped[int] = mapped_column(ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
+class ProductQuestion(Base, TimestampMixin):
+    __tablename__ = "product_questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    answers = relationship("ProductAnswer", back_populates="question", cascade="all, delete-orphan")
+
+
+class ProductAnswer(Base, TimestampMixin):
+    __tablename__ = "product_answers"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("product_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_staff_answer: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    question = relationship("ProductQuestion", back_populates="answers")
 
 
 class WishlistItem(Base):

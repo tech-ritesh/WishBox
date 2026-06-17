@@ -545,6 +545,7 @@ class ReviewCreate(BaseModel):
     product_id: int
     rating: int = Field(..., ge=1, le=5)
     comment: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class ReviewOut(BaseModel):
@@ -554,10 +555,42 @@ class ReviewOut(BaseModel):
     product_id: int
     rating: int
     comment: Optional[str] = None
+    image_url: Optional[str] = None
     verified_purchase: bool = False
     helpful_count: int = 0
+    status: str = "approved"
     created_at: dt.datetime
     user_name: Optional[str] = None
+
+
+class ReviewModerate(BaseModel):
+    status: str  # approved | rejected | pending
+
+
+# --- Product Q&A -------------------------------------------------------------
+class QuestionCreate(BaseModel):
+    body: str = Field(..., min_length=3)
+
+
+class AnswerCreate(BaseModel):
+    body: str = Field(..., min_length=1)
+
+
+class AnswerOut(BaseModel):
+    model_config = ORM
+    id: int
+    body: str
+    is_staff_answer: bool = False
+    created_at: dt.datetime
+
+
+class QuestionOut(BaseModel):
+    model_config = ORM
+    id: int
+    product_id: int
+    body: str
+    created_at: dt.datetime
+    answers: List[AnswerOut] = []
 
 
 # --- Wishlist / Reminders / Notifications ------------------------------------
