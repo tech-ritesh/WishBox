@@ -14,6 +14,7 @@ from app import models, schemas
 from app.api.deps import require_admin, require_staff
 from app.core.config import settings
 from app.core.database import get_db
+from app.services import notifications
 from app.services.common import money, unique_slug
 from app.services.fulfillment import update_return, upsert_shipment
 from app.services.orders import change_status
@@ -250,6 +251,69 @@ def low_stock(db: Session = Depends(get_db), _: models.User = Depends(require_st
         models.Product.stock <= models.Product.low_stock_threshold,
         models.Product.is_active.is_(True),
     ).all()
+
+
+# --- FAQ management ---
+@router.post("/faqs", response_model=schemas.FaqOut, status_code=201)
+def create_faq(data: schemas.FaqCreate, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    faq = models.FaqEntry(**data.model_dump())
+    db.add(faq); db.commit(); db.refresh(faq)
+    return faq
+
+
+@router.put("/faqs/{faq_id}", response_model=schemas.FaqOut)
+def update_faq(faq_id: int, data: schemas.FaqCreate, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    faq = db.get(models.FaqEntry, faq_id)
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ not found")
+    for k, v in data.model_dump().items():
+        setattr(faq, k, v)
+    db.commit(); db.refresh(faq)
+    return faq
+
+
+@router.delete("/faqs/{faq_id}", status_code=204)
+def delete_faq(faq_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    faq = db.get(models.FaqEntry, faq_id)
+    if faq:
+        db.delete(faq); db.commit()
+
+
+# --- Support tickets ---
+@router.get("/tickets", response_model=List[schemas.TicketOut])
+def list_tickets(status: str = None, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    q = db.query(models.SupportTicket).options(joinedload(models.SupportTicket.messages))
+    if status:
+        q = q.filter(models.SupportTicket.status == status)
+    return q.order_by(models.SupportTicket.created_at.desc()).all()
+
+
+@router.post("/tickets/{ticket_id}/reply", response_model=schemas.TicketOut)
+def staff_reply(ticket_id: int, data: schemas.TicketReply, db: Session = Depends(get_db),
+                actor: models.User = Depends(require_staff)):
+    ticket = db.get(models.SupportTicket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    db.add(models.TicketMessage(ticket_id=ticket.id, user_id=actor.id, body=data.body, is_staff=True))
+    ticket.status = "pending"
+    user = db.get(models.User, ticket.user_id)
+    db.add(models.Notification(user_id=ticket.user_id, type="info",
+                               title=f"Reply to '{ticket.subject}'", body=data.body[:120], link="/account"))
+    if user and user.email:
+        notifications.queue_email(db, user.email, f"Re: {ticket.subject}", data.body, user_id=user.id)
+    db.commit(); db.refresh(ticket)
+    return ticket
+
+
+@router.put("/tickets/{ticket_id}", response_model=schemas.TicketOut)
+def update_ticket(ticket_id: int, data: schemas.TicketStatusUpdate, db: Session = Depends(get_db),
+                  _: models.User = Depends(require_staff)):
+    ticket = db.get(models.SupportTicket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket.status = data.status
+    db.commit(); db.refresh(ticket)
+    return ticket
 
 
 # --- Review moderation ---

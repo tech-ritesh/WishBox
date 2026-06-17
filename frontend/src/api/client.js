@@ -127,6 +127,12 @@ export const hampersApi = {
   create: (d) => api.post('/hampers', d),
 };
 export const recommendationsApi = { smart: (d) => api.post('/recommendations/smart', d) };
+export const supportApi = {
+  faqs: () => api.get('/faqs'),
+  myTickets: () => api.get('/support/tickets'),
+  openTicket: (d) => api.post('/support/tickets', d),
+  reply: (id, body) => api.post(`/support/tickets/${id}/messages`, { body }),
+};
 export const walletApi = {
   get: () => api.get('/wallet'),
   referral: () => api.get('/wallet/referral'),
@@ -152,6 +158,11 @@ export const adminApi = {
   updateReturn: (id, d) => api.put(`/admin/returns/${id}`, d),
   reviews: (status) => api.get('/admin/reviews', { params: status ? { status } : {} }),
   moderateReview: (id, status) => api.put(`/admin/reviews/${id}`, { status }),
+  tickets: (status) => api.get('/admin/tickets', { params: status ? { status } : {} }),
+  replyTicket: (id, body) => api.post(`/admin/tickets/${id}/reply`, { body }),
+  updateTicket: (id, status) => api.put(`/admin/tickets/${id}`, { status }),
+  createFaq: (d) => api.post('/admin/faqs', d),
+  deleteFaq: (id) => api.delete(`/admin/faqs/${id}`),
   outbox: (status) => api.get('/admin/outbox', { params: status ? { status } : {} }),
   runWorkerTick: () => api.post('/admin/worker/run-tick'),
 };

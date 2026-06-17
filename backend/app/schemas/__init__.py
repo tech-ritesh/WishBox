@@ -785,6 +785,55 @@ class OutboxMessageOut(BaseModel):
     sent_at: Optional[dt.datetime] = None
 
 
+# --- Support (FAQ + tickets) -------------------------------------------------
+class FaqOut(BaseModel):
+    model_config = ORM
+    id: int
+    question: str
+    answer: str
+    category: str
+    sort_order: int = 0
+
+
+class FaqCreate(BaseModel):
+    question: str
+    answer: str
+    category: str = "General"
+    sort_order: int = 0
+
+
+class TicketMessageOut(BaseModel):
+    model_config = ORM
+    id: int
+    body: str
+    is_staff: bool
+    created_at: dt.datetime
+
+
+class TicketCreate(BaseModel):
+    subject: str
+    body: str
+    order_number: Optional[str] = None
+
+
+class TicketReply(BaseModel):
+    body: str
+
+
+class TicketStatusUpdate(BaseModel):
+    status: str  # open|pending|resolved|closed
+
+
+class TicketOut(BaseModel):
+    model_config = ORM
+    id: int
+    subject: str
+    order_number: Optional[str] = None
+    status: str
+    created_at: dt.datetime
+    messages: List[TicketMessageOut] = []
+
+
 # --- Admin analytics ---------------------------------------------------------
 class AdminSummaryOut(BaseModel):
     total_revenue: Decimal

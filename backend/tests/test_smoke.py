@@ -527,6 +527,36 @@ def test_reviews_helpful_moderation_and_qa():
     client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
 
 
+def test_faq_and_support_tickets():
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    faq = client.post("/api/v1/admin/faqs", headers=ah, json={
+        "question": "How fast is delivery?", "answer": "Same-day in metros.", "category": "Shipping",
+    })
+    assert faq.status_code == 201, faq.text
+    assert any(f["question"] == "How fast is delivery?" for f in client.get("/api/v1/faqs").json())
+
+    cust = _login("customer@wishbox.com", "customer123")
+    ch = {"Authorization": f"Bearer {cust}"}
+    t = client.post("/api/v1/support/tickets", headers=ch, json={
+        "subject": "Where is my order?", "body": "It is late.",
+    })
+    assert t.status_code == 201, t.text
+    tid = t.json()["id"]
+    assert t.json()["messages"][0]["body"] == "It is late."
+
+    rep = client.post(f"/api/v1/admin/tickets/{tid}/reply", headers=ah, json={"body": "Shipping today!"})
+    assert rep.status_code == 200 and rep.json()["status"] == "pending"
+
+    mine = client.get("/api/v1/support/tickets", headers=ch).json()
+    msgs = next(x for x in mine if x["id"] == tid)["messages"]
+    assert any(m["is_staff"] and m["body"] == "Shipping today!" for m in msgs)
+
+    assert client.put(f"/api/v1/admin/tickets/{tid}", headers=ah, json={"status": "resolved"}).status_code == 200
+
+    client.delete(f"/api/v1/admin/faqs/{faq.json()['id']}", headers=ah)
+
+
 def test_guest_checkout_and_claim():
     product = _orderable_product(min_stock=3)
     email = "guestbuyer@example.com"

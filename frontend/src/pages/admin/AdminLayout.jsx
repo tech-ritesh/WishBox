@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingBag, Ticket, Gift, LogOut, RotateCcw, Mail, Star } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Ticket, Gift, LogOut, RotateCcw, Mail, Star, LifeBuoy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const links = [
@@ -9,6 +9,7 @@ const links = [
   ['/admin/coupons', 'Coupons', Ticket],
   ['/admin/returns', 'Returns', RotateCcw],
   ['/admin/reviews', 'Reviews', Star],
+  ['/admin/support', 'Support', LifeBuoy],
   ['/admin/outbox', 'Outbox', Mail],
 ];
 

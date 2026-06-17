@@ -78,7 +78,8 @@ class User(Base, TimestampMixin):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False)  # checkout-only shadow account
     referral_code: Mapped[str] = mapped_column(String, nullable=True, unique=True, index=True)
-    referred_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # App-enforced reference (no DB FK to avoid SQLite ALTER-FK rebuilds).
+    referred_by_id: Mapped[int] = mapped_column(Integer, nullable=True)
     last_login_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
     corporate_account_id: Mapped[int] = mapped_column(ForeignKey("corporate_accounts.id"), nullable=True)
 
@@ -242,13 +243,17 @@ class CartItem(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
-    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
+    variant_id: Mapped[int] = mapped_column(Integer, nullable=True)  # app-enforced FK
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     customization_details: Mapped[dict] = mapped_column(JSON, nullable=True)
 
     user = relationship("User", back_populates="cart_items")
     product = relationship("Product")
-    variant = relationship("ProductVariant")
+    variant = relationship(
+        "ProductVariant",
+        primaryjoin="foreign(CartItem.variant_id) == ProductVariant.id",
+        viewonly=True, uselist=False,
+    )
 
 
 class Hamper(Base, TimestampMixin):
@@ -327,7 +332,7 @@ class OrderItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
-    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
+    variant_id: Mapped[int] = mapped_column(Integer, nullable=True)  # app-enforced FK
     product_name: Mapped[str] = mapped_column(String, nullable=False)  # snapshot
     variant_name: Mapped[str] = mapped_column(String, nullable=True)   # snapshot
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
@@ -733,6 +738,45 @@ class AuthToken(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
     used_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+# --- Support (FAQ + tickets) -------------------------------------------------
+class FaqEntry(Base, TimestampMixin):
+    __tablename__ = "faq_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    question: Mapped[str] = mapped_column(String, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String, default="General")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SupportTicket(Base, TimestampMixin):
+    __tablename__ = "support_tickets"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    order_number: Mapped[str] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="open")  # open|pending|resolved|closed
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+
+    messages = relationship("TicketMessage", back_populates="ticket",
+                            cascade="all, delete-orphan", order_by="TicketMessage.created_at")
+
+
+class TicketMessage(Base):
+    __tablename__ = "ticket_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_staff: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    ticket = relationship("SupportTicket", back_populates="messages")
 
 
 # --- Audit -------------------------------------------------------------------

@@ -17,6 +17,7 @@ import OrderTracking from './pages/OrderTracking';
 import Wishlist from './pages/Wishlist';
 import GiftFinder from './pages/GiftFinder';
 import HamperBuilder from './pages/HamperBuilder';
+import Support from './pages/Support';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProducts from './pages/admin/AdminProducts';
@@ -25,6 +26,7 @@ import AdminCoupons from './pages/admin/AdminCoupons';
 import AdminReturns from './pages/admin/AdminReturns';
 import AdminOutbox from './pages/admin/AdminOutbox';
 import AdminReviews from './pages/admin/AdminReviews';
+import AdminSupport from './pages/admin/AdminSupport';
 
 export default function App() {
   return (
@@ -37,6 +39,7 @@ export default function App() {
         <Route path="/cart" element={<Cart />} />
         <Route path="/gift-finder" element={<GiftFinder />} />
         <Route path="/hamper-builder" element={<HamperBuilder />} />
+        <Route path="/support" element={<Support />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -55,6 +58,7 @@ export default function App() {
         <Route path="coupons" element={<AdminCoupons />} />
         <Route path="returns" element={<AdminReturns />} />
         <Route path="reviews" element={<AdminReviews />} />
+        <Route path="support" element={<AdminSupport />} />
         <Route path="outbox" element={<AdminOutbox />} />
       </Route>
       <Route path="*" element={<PublicLayout />} />
