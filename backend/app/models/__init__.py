@@ -425,6 +425,20 @@ class FestivalCampaign(Base, TimestampMixin):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class Banner(Base, TimestampMixin):
+    """CMS-managed homepage hero/promo banner."""
+    __tablename__ = "banners"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    subtitle: Mapped[str] = mapped_column(String, nullable=True)
+    image_url: Mapped[str] = mapped_column(String, nullable=True)
+    link: Mapped[str] = mapped_column(String, nullable=True)
+    cta_text: Mapped[str] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class HomepageCollection(Base, TimestampMixin):
     __tablename__ = "homepage_collections"
 

@@ -30,3 +30,11 @@ def generate_order_number() -> str:
 
 def money(value) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
+
+
+def audit(db, actor_id, action, entity=None, entity_id=None, detail=None) -> None:
+    """Append an audit-log row. Caller commits."""
+    from app import models
+    db.add(models.AuditLog(
+        actor_id=actor_id, action=action, entity=entity, entity_id=entity_id, detail=detail,
+    ))

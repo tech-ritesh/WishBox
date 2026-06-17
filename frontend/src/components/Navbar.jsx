@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Gift, ShoppingCart, User, LayoutDashboard, Sparkles, Heart, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { categoriesApi } from '../api/client';
+import { categoriesApi, storefrontApi } from '../api/client';
+import { getCurrency, setCurrency } from '../utils/format';
 import SearchBox from './SearchBox';
 
 export default function Navbar() {
@@ -12,8 +13,16 @@ export default function Navbar() {
   const navigate = useNavigate();
   const [tree, setTree] = useState([]);
   const [openId, setOpenId] = useState(null);
+  const [currencies, setCurrencies] = useState([]);
+  const [cur, setCur] = useState(getCurrency().code);
 
   useEffect(() => { categoriesApi.tree().then((r) => setTree(r.data)).catch(() => {}); }, []);
+  useEffect(() => { storefrontApi.currencies().then((r) => setCurrencies(r.data.rates)).catch(() => {}); }, []);
+
+  const onCurrency = (code) => {
+    const c = currencies.find((x) => x.code === code);
+    if (c) { setCurrency(c); setCur(code); window.location.reload(); }
+  };
 
   const openParent = tree.find((p) => p.id === openId);
 
@@ -36,6 +45,12 @@ export default function Navbar() {
         <div className="ml-auto" />
         <SearchBox />
         <div className="flex items-center gap-3" onMouseEnter={() => setOpenId(null)}>
+          {currencies.length > 0 && (
+            <select value={cur} onChange={(e) => onCurrency(e.target.value)}
+              className="hidden rounded border border-slate-200 px-1 py-1 text-xs sm:block" title="Currency">
+              {currencies.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
+            </select>
+          )}
           <Link to="/cart" className="relative">
             <ShoppingCart className="text-slate-700" />
             {cart.item_count > 0 && <span className="absolute -right-2 -top-2 badge bg-brand-600 text-white">{cart.item_count}</span>}

@@ -527,6 +527,46 @@ def test_reviews_helpful_moderation_and_qa():
     client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
 
 
+def test_seo_sitemap_and_robots():
+    r = client.get("/robots.txt")
+    assert r.status_code == 200 and "Sitemap:" in r.text
+    s = client.get("/sitemap.xml")
+    assert s.status_code == 200 and "<urlset" in s.text and "/product/" in s.text
+
+
+def test_admin_ops_banners_csv_audit_report():
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    leaf, _ = _find_leaf(client.get("/api/v1/categories/tree").json())
+
+    # CMS banner -> visible publicly
+    b = client.post("/api/v1/admin/banners", headers=ah, json={"title": "Diwali Sale", "link": "/shop"})
+    assert b.status_code == 201, b.text
+    assert any(x["title"] == "Diwali Sale" for x in client.get("/api/v1/banners").json())
+
+    # CSV bulk product import
+    csv_text = "name,price,stock,category_id\nPytestCSV One,199,5,%d\nPytestCSV Two,299,3,%d\n" % (leaf["id"], leaf["id"])
+    imp = client.post("/api/v1/admin/products/bulk-import", headers=ah,
+                      files={"file": ("products.csv", csv_text, "text/csv")})
+    assert imp.status_code == 200, imp.text
+    assert imp.json()["created"] == 2
+
+    # audit log captured the import + product creation
+    logs = client.get("/api/v1/admin/audit-logs", headers=ah).json()
+    assert any(l["action"] == "bulk_import_products" for l in logs)
+
+    # sales report CSV
+    rep = client.get("/api/v1/admin/reports/sales.csv", headers=ah)
+    assert rep.status_code == 200 and "order_number" in rep.text
+    assert rep.headers["content-type"].startswith("text/csv")
+
+    # currencies endpoint
+    cur = client.get("/api/v1/currencies").json()
+    assert cur["base"] == "INR" and any(r["code"] == "USD" for r in cur["rates"])
+
+    client.delete(f"/api/v1/admin/banners/{b.json()['id']}", headers=ah)
+
+
 def test_faq_and_support_tickets():
     admin = _login("admin@wishbox.com", "admin12345")
     ah = {"Authorization": f"Bearer {admin}"}

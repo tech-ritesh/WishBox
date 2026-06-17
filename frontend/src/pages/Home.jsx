@@ -1,23 +1,37 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles, Truck, Gift, ShieldCheck } from 'lucide-react';
-import { productsApi, categoriesApi } from '../api/client';
+import { productsApi, categoriesApi, storefrontApi } from '../api/client';
 import ProductCard from '../components/ProductCard';
 import { Spinner } from '../components/Layout';
 
 export default function Home() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [banners, setBanners] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([productsApi.list({ sort: 'rating', limit: 8 }), categoriesApi.tree()])
       .then(([p, c]) => { setProducts(p.data.items); setCategories(c.data); })
       .finally(() => setLoading(false));
+    storefrontApi.banners().then((r) => setBanners(r.data)).catch(() => {});
   }, []);
 
   return (
     <div>
+      {banners.length > 0 && (
+        <div className="mb-6 grid gap-3 md:grid-cols-2">
+          {banners.map((b) => (
+            <Link key={b.id} to={b.link || '/shop'}
+              className="flex flex-col justify-center rounded-xl bg-gradient-to-r from-brand-500 to-pink-400 p-6 text-white">
+              <h3 className="text-xl font-bold">{b.title}</h3>
+              {b.subtitle && <p className="text-sm text-brand-50">{b.subtitle}</p>}
+              {b.cta_text && <span className="mt-2 text-sm font-semibold underline">{b.cta_text} →</span>}
+            </Link>
+          ))}
+        </div>
+      )}
       <section className="rounded-2xl bg-gradient-to-br from-brand-600 to-pink-500 p-10 text-white">
         <h1 className="text-4xl font-extrabold">Gifts that say it perfectly 🎁</h1>
         <p className="mt-3 max-w-xl text-brand-50">

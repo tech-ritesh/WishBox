@@ -834,6 +834,41 @@ class TicketOut(BaseModel):
     messages: List[TicketMessageOut] = []
 
 
+# --- CMS banners -------------------------------------------------------------
+class BannerOut(BaseModel):
+    model_config = ORM
+    id: int
+    title: str
+    subtitle: Optional[str] = None
+    image_url: Optional[str] = None
+    link: Optional[str] = None
+    cta_text: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class BannerCreate(BaseModel):
+    title: str
+    subtitle: Optional[str] = None
+    image_url: Optional[str] = None
+    link: Optional[str] = None
+    cta_text: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+
+
+# --- Audit log ---------------------------------------------------------------
+class AuditLogOut(BaseModel):
+    model_config = ORM
+    id: int
+    actor_id: Optional[int] = None
+    action: str
+    entity: Optional[str] = None
+    entity_id: Optional[int] = None
+    detail: Optional[Dict[str, Any]] = None
+    created_at: dt.datetime
+
+
 # --- Admin analytics ---------------------------------------------------------
 class AdminSummaryOut(BaseModel):
     total_revenue: Decimal

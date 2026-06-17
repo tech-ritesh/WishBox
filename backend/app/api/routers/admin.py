@@ -1,5 +1,7 @@
 """Admin/staff endpoints: analytics, catalog CRUD, order management, coupons, vendors, uploads."""
+import csv
 import datetime as dt
+import io
 import os
 import uuid
 from collections import defaultdict
@@ -7,6 +9,7 @@ from decimal import Decimal
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -15,7 +18,7 @@ from app.api.deps import require_admin, require_staff
 from app.core.config import settings
 from app.core.database import get_db
 from app.services import notifications
-from app.services.common import money, unique_slug
+from app.services.common import audit, money, unique_slug
 from app.services.fulfillment import update_return, upsert_shipment
 from app.services.orders import change_status
 
@@ -121,7 +124,7 @@ def _apply_tags(db: Session, product: models.Product, names: List[str]):
 
 @router.post("/products", response_model=schemas.ProductOut, status_code=201)
 def create_product(data: schemas.ProductCreate, db: Session = Depends(get_db),
-                   _: models.User = Depends(require_staff)):
+                   actor: models.User = Depends(require_staff)):
     slug = unique_slug(data.name, lambda s: db.query(models.Product).filter(models.Product.slug == s).first() is not None)
     product = models.Product(
         slug=slug, name=data.name, description=data.description, price=data.price,
@@ -134,6 +137,7 @@ def create_product(data: schemas.ProductCreate, db: Session = Depends(get_db),
     _apply_tags(db, product, data.tags)
     if data.stock:
         db.add(models.StockMovement(product_id=product.id, change=data.stock, reason="restock", reference="initial"))
+    audit(db, actor.id, "create_product", entity="product", entity_id=product.id, detail={"name": product.name})
     db.commit()
     db.refresh(product)
     return product
@@ -160,11 +164,12 @@ def update_product(product_id: int, data: schemas.ProductUpdate, db: Session = D
 
 
 @router.delete("/products/{product_id}", status_code=204)
-def delete_product(product_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_product(product_id: int, db: Session = Depends(get_db), actor: models.User = Depends(require_admin)):
     product = db.query(models.Product).get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     product.is_active = False  # soft delete preserves order history
+    audit(db, actor.id, "delete_product", entity="product", entity_id=product.id, detail={"name": product.name})
     db.commit()
 
 
@@ -426,6 +431,77 @@ def run_worker_tick(db: Session = Depends(get_db), _: models.User = Depends(requ
     """Manually run one worker tick (fire due reminders + flush outbox). Handy for demos."""
     from app.services.worker import run_tick
     return run_tick(db)
+
+
+# --- CMS banners ---
+@router.get("/banners", response_model=List[schemas.BannerOut])
+def admin_list_banners(db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    return db.query(models.Banner).order_by(models.Banner.sort_order.asc(), models.Banner.id.desc()).all()
+
+
+@router.post("/banners", response_model=schemas.BannerOut, status_code=201)
+def create_banner(data: schemas.BannerCreate, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    banner = models.Banner(**data.model_dump())
+    db.add(banner); db.commit(); db.refresh(banner)
+    return banner
+
+
+@router.delete("/banners/{banner_id}", status_code=204)
+def delete_banner(banner_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    b = db.get(models.Banner, banner_id)
+    if b:
+        db.delete(b); db.commit()
+
+
+# --- Audit log viewer ---
+@router.get("/audit-logs", response_model=List[schemas.AuditLogOut])
+def list_audit_logs(limit: int = 100, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    return db.query(models.AuditLog).order_by(models.AuditLog.id.desc()).limit(min(limit, 500)).all()
+
+
+# --- Bulk product import (CSV) ---
+@router.post("/products/bulk-import")
+async def bulk_import_products(file: UploadFile = File(...), db: Session = Depends(get_db),
+                               actor: models.User = Depends(require_admin)):
+    """CSV columns: name, price, stock, category_id[, description, sku, discount_price, type]."""
+    raw = (await file.read()).decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(raw))
+    created, errors = 0, []
+    for i, row in enumerate(reader, start=2):  # row 1 is the header
+        try:
+            name = (row.get("name") or "").strip()
+            if not name:
+                raise ValueError("missing name")
+            cat_id = int(row["category_id"])
+            if not db.get(models.Category, cat_id):
+                raise ValueError(f"category_id {cat_id} not found")
+            slug = unique_slug(name, lambda s: db.query(models.Product).filter(models.Product.slug == s).first() is not None)
+            db.add(models.Product(
+                name=name, slug=slug, description=row.get("description") or None,
+                price=money(row.get("price") or 0),
+                discount_price=money(row["discount_price"]) if row.get("discount_price") else None,
+                stock=int(row.get("stock") or 0), category_id=cat_id,
+                sku=row.get("sku") or None, type=row.get("type") or "hamper",
+            ))
+            created += 1
+        except Exception as e:  # collect per-row errors, keep importing
+            errors.append({"row": i, "error": str(e)})
+    audit(db, actor.id, "bulk_import_products", entity="product", detail={"created": created, "errors": len(errors)})
+    db.commit()
+    return {"created": created, "errors": errors}
+
+
+# --- Sales report (CSV export) ---
+@router.get("/reports/sales.csv")
+def sales_report_csv(db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["order_number", "created_at", "status", "payment_status", "subtotal", "discount", "shipping", "total"])
+    for o in db.query(models.Order).order_by(models.Order.created_at.desc()).all():
+        w.writerow([o.order_number, o.created_at.isoformat(), o.status.value, o.payment_status.value,
+                    o.subtotal, o.discount_amount, o.shipping_fee, o.total_amount])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=wishbox-sales.csv"})
 
 
 # --- Image upload (validated) ---

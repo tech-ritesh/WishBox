@@ -74,6 +74,10 @@ export const categoriesApi = {
   list: () => api.get('/categories'),
   tree: () => api.get('/categories/tree'),
 };
+export const storefrontApi = {
+  banners: () => api.get('/banners'),
+  currencies: () => api.get('/currencies'),
+};
 export const cartApi = {
   get: () => api.get('/cart'),
   add: (d) => api.post('/cart', d),
@@ -163,6 +167,11 @@ export const adminApi = {
   updateTicket: (id, status) => api.put(`/admin/tickets/${id}`, { status }),
   createFaq: (d) => api.post('/admin/faqs', d),
   deleteFaq: (id) => api.delete(`/admin/faqs/${id}`),
+  banners: () => api.get('/admin/banners'),
+  createBanner: (d) => api.post('/admin/banners', d),
+  deleteBanner: (id) => api.delete(`/admin/banners/${id}`),
+  auditLogs: () => api.get('/admin/audit-logs'),
+  bulkImport: (formData) => api.post('/admin/products/bulk-import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   outbox: (status) => api.get('/admin/outbox', { params: status ? { status } : {} }),
   runWorkerTick: () => api.post('/admin/worker/run-tick'),
 };
