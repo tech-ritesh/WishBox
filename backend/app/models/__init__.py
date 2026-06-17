@@ -465,6 +465,46 @@ class Notification(Base):
     user = relationship("User", back_populates="notifications")
 
 
+# --- Discovery ---------------------------------------------------------------
+class RecentlyViewed(Base):
+    __tablename__ = "recently_viewed"
+    __table_args__ = (UniqueConstraint("user_id", "product_id", name="uq_recent_user_product"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    viewed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    product = relationship("Product")
+
+
+class BackInStockSubscription(Base):
+    __tablename__ = "back_in_stock_subscriptions"
+    __table_args__ = (UniqueConstraint("user_id", "product_id", name="uq_bis_user_product"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    product = relationship("Product")
+    user = relationship("User")
+
+
+class SavedPaymentMethod(Base):
+    """Non-sensitive saved payment preference (no PAN/card data stored)."""
+    __tablename__ = "saved_payment_methods"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)   # e.g. "HDFC •••• 4242", "UPI: name@bank"
+    method_type: Mapped[str] = mapped_column(String, default="card")  # card | upi | netbanking | cod
+    last4: Mapped[str] = mapped_column(String, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # --- Corporate gifting -------------------------------------------------------
 class CorporateAccount(Base, TimestampMixin):
     __tablename__ = "corporate_accounts"

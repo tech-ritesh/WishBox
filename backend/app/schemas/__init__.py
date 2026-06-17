@@ -547,6 +547,32 @@ class NotificationOut(BaseModel):
     created_at: dt.datetime
 
 
+# --- Discovery ---------------------------------------------------------------
+class RecentlyViewedOut(BaseModel):
+    model_config = ORM
+    id: int
+    product_id: int
+    viewed_at: dt.datetime
+    product: ProductOut
+
+
+class SavedPaymentMethodCreate(BaseModel):
+    label: str
+    method_type: str = "card"
+    last4: Optional[str] = None
+    is_default: bool = False
+
+
+class SavedPaymentMethodOut(BaseModel):
+    model_config = ORM
+    id: int
+    label: str
+    method_type: str
+    last4: Optional[str] = None
+    is_default: bool
+    created_at: dt.datetime
+
+
 # --- Vendors -----------------------------------------------------------------
 class VendorCreate(BaseModel):
     name: str

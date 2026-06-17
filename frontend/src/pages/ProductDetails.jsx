@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Star, ShoppingCart, Heart, Truck, Sparkles } from 'lucide-react';
-import { productsApi, reviewsApi, wishlistApi } from '../api/client';
+import { productsApi, reviewsApi, wishlistApi, discoveryApi } from '../api/client';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { inr } from '../utils/format';
 import { Spinner } from '../components/Layout';
+import ProductCard from '../components/ProductCard';
 
 export default function ProductDetails() {
   const { slug } = useParams();
@@ -13,8 +14,10 @@ export default function ProductDetails() {
   const { user } = useAuth();
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [related, setRelated] = useState([]);
   const [qty, setQty] = useState(1);
   const [msg, setMsg] = useState('');
+  const [notifyMsg, setNotifyMsg] = useState('');
   const [personalMsg, setPersonalMsg] = useState('');
   const [form, setForm] = useState({ rating: 5, comment: '' });
 
@@ -22,10 +25,18 @@ export default function ProductDetails() {
     productsApi.detail(slug).then((r) => {
       setProduct(r.data);
       reviewsApi.list(r.data.id).then((rv) => setReviews(rv.data));
+      if (user) discoveryApi.recordView(r.data.id).catch(() => {});
     });
-  }, [slug]);
+    productsApi.related(slug).then((r) => setRelated(r.data)).catch(() => {});
+  }, [slug, user]);
 
   if (!product) return <Spinner />;
+
+  const notifyMe = async () => {
+    if (!user) { window.location.href = '/login'; return; }
+    try { await discoveryApi.notifyMe(product.id); setNotifyMsg("We'll email you when it's back in stock."); }
+    catch (e) { setNotifyMsg(e.response?.data?.detail || 'Could not subscribe'); }
+  };
 
   const submitReview = async (e) => {
     e.preventDefault();
@@ -69,6 +80,12 @@ export default function ProductDetails() {
             </p>
           )}
           <p className="mt-2 text-sm text-slate-500">{product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}</p>
+          {product.stock <= 0 && (
+            <div className="mt-2">
+              <button onClick={notifyMe} className="btn-ghost text-sm">🔔 Notify me when available</button>
+              {notifyMsg && <p className="mt-1 text-xs text-brand-600">{notifyMsg}</p>}
+            </div>
+          )}
 
           {product.is_customizable && (
             <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50 p-3">
@@ -125,6 +142,15 @@ export default function ProductDetails() {
           ))}
         </div>
       </section>
+
+      {related.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-xl font-bold">You may also like</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {related.map((p) => <ProductCard key={p.id} product={p} />)}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

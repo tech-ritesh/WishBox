@@ -180,3 +180,86 @@ def smart_finder(data: schemas.SmartFinderRequest, db: Session = Depends(get_db)
                           "emotion": emotion, "budget": budget},
         "source": "local-engine",
     }
+
+
+# --- Recently viewed ---
+@router.post("/recently-viewed/{product_id}", status_code=204)
+def record_recently_viewed(product_id: int, current_user: models.User = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    if not db.get(models.Product, product_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    row = db.query(models.RecentlyViewed).filter(
+        models.RecentlyViewed.user_id == current_user.id,
+        models.RecentlyViewed.product_id == product_id,
+    ).first()
+    if row:
+        row.viewed_at = func.now()
+    else:
+        db.add(models.RecentlyViewed(user_id=current_user.id, product_id=product_id))
+    db.commit()
+
+
+@router.get("/recently-viewed", response_model=List[schemas.RecentlyViewedOut])
+def list_recently_viewed(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return (
+        db.query(models.RecentlyViewed)
+        .options(joinedload(models.RecentlyViewed.product))
+        .filter(models.RecentlyViewed.user_id == current_user.id)
+        .order_by(models.RecentlyViewed.viewed_at.desc())
+        .limit(12)
+        .all()
+    )
+
+
+# --- Back-in-stock alerts ---
+@router.post("/products/{product_id}/notify-me", status_code=204)
+def subscribe_back_in_stock(product_id: int, current_user: models.User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    product = db.get(models.Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if product.stock > 0:
+        raise HTTPException(status_code=400, detail="Product is already in stock")
+    existing = db.query(models.BackInStockSubscription).filter(
+        models.BackInStockSubscription.user_id == current_user.id,
+        models.BackInStockSubscription.product_id == product_id,
+    ).first()
+    if existing:
+        existing.notified = False
+    else:
+        db.add(models.BackInStockSubscription(user_id=current_user.id, product_id=product_id))
+    db.commit()
+
+
+# --- Saved payment methods (no sensitive card data) ---
+@router.get("/payment-methods", response_model=List[schemas.SavedPaymentMethodOut])
+def list_payment_methods(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.SavedPaymentMethod).filter(
+        models.SavedPaymentMethod.user_id == current_user.id
+    ).order_by(models.SavedPaymentMethod.is_default.desc(), models.SavedPaymentMethod.id.desc()).all()
+
+
+@router.post("/payment-methods", response_model=schemas.SavedPaymentMethodOut, status_code=201)
+def add_payment_method(data: schemas.SavedPaymentMethodCreate,
+                       current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if data.is_default:
+        db.query(models.SavedPaymentMethod).filter(
+            models.SavedPaymentMethod.user_id == current_user.id
+        ).update({models.SavedPaymentMethod.is_default: False})
+    pm = models.SavedPaymentMethod(user_id=current_user.id, **data.model_dump())
+    db.add(pm)
+    db.commit()
+    db.refresh(pm)
+    return pm
+
+
+@router.delete("/payment-methods/{pm_id}", status_code=204)
+def delete_payment_method(pm_id: int, current_user: models.User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    pm = db.query(models.SavedPaymentMethod).filter(
+        models.SavedPaymentMethod.id == pm_id,
+        models.SavedPaymentMethod.user_id == current_user.id,
+    ).first()
+    if pm:
+        db.delete(pm)
+        db.commit()

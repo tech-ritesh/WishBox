@@ -423,6 +423,56 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_recently_viewed_and_related_and_payment_methods():
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    product = _orderable_product()
+
+    # recently viewed
+    assert client.post(f"/api/v1/recently-viewed/{product['id']}", headers=h).status_code == 204
+    rv = client.get("/api/v1/recently-viewed", headers=h).json()
+    assert any(x["product_id"] == product["id"] for x in rv)
+
+    # related products (same category) responds
+    rel = client.get(f"/api/v1/products/{product['slug']}/related")
+    assert rel.status_code == 200 and isinstance(rel.json(), list)
+
+    # saved payment methods
+    pm = client.post("/api/v1/payment-methods", headers=h,
+                     json={"label": "HDFC 4242", "method_type": "card", "last4": "4242", "is_default": True})
+    assert pm.status_code == 201, pm.text
+    assert any(m["last4"] == "4242" for m in client.get("/api/v1/payment-methods", headers=h).json())
+    client.delete(f"/api/v1/payment-methods/{pm.json()['id']}", headers=h)
+
+
+def test_back_in_stock_alert_fires_on_restock():
+    cust = _login("customer@wishbox.com", "customer123")
+    ch = {"Authorization": f"Bearer {cust}"}
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+
+    # make a product that is out of stock
+    leaf, _ = _find_leaf(client.get("/api/v1/categories/tree").json())
+    prod = client.post("/api/v1/admin/products", headers=ah, json={
+        "name": "PytestBIS Gift", "price": 400, "stock": 0, "category_id": leaf["id"],
+    }).json()
+
+    # subscribe while out of stock
+    assert client.post(f"/api/v1/products/{prod['id']}/notify-me", headers=ch).status_code == 204
+    # subscribing to an in-stock product is rejected
+    instock = _orderable_product()
+    assert client.post(f"/api/v1/products/{instock['id']}/notify-me", headers=ch).status_code == 400
+
+    # admin restocks -> worker tick should alert the subscriber
+    client.put(f"/api/v1/admin/products/{prod['id']}", headers=ah, json={"stock": 10})
+    tick = client.post("/api/v1/admin/worker/run-tick", headers=ah).json()
+    assert tick["back_in_stock_alerts"] >= 1
+    notifs = client.get("/api/v1/notifications", headers=ch).json()
+    assert any("PytestBIS" in n["body"] for n in notifs if n.get("body"))
+
+    client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
+
+
 def test_search_autocomplete_and_relevance():
     p = _orderable_product()  # creates/returns "PytestOrderable Gift"
     ac = client.get("/api/v1/products/autocomplete?q=PytestOrder")

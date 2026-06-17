@@ -59,11 +59,42 @@ def fire_due_reminders(db: Session, today: dt.date | None = None) -> int:
     return len(due)
 
 
+def notify_back_in_stock(db: Session) -> int:
+    """Alert subscribers when a previously out-of-stock product is restocked."""
+    subs = (
+        db.query(models.BackInStockSubscription)
+        .filter(models.BackInStockSubscription.notified.is_(False))
+        .all()
+    )
+    notified = 0
+    for sub in subs:
+        product = db.get(models.Product, sub.product_id)
+        if product and product.stock > 0:
+            db.add(models.Notification(
+                user_id=sub.user_id, type="promo",
+                title="Back in stock! 🎁",
+                body=f"{product.name} is available again.",
+                link=f"/product/{product.slug}",
+            ))
+            user = db.get(models.User, sub.user_id)
+            if user and user.email:
+                notifications.queue_email(
+                    db, user.email, f"{product.name} is back in stock",
+                    f"Good news! {product.name} is available again. Grab it before it sells out.",
+                    user_id=user.id,
+                )
+            sub.notified = True
+            notified += 1
+    db.commit()
+    return notified
+
+
 def run_tick(db: Session) -> dict:
-    """One unit of work: fire reminders, then flush the outbox."""
+    """One unit of work: fire reminders, back-in-stock alerts, then flush the outbox."""
     fired = fire_due_reminders(db)
+    restocked = notify_back_in_stock(db)
     sent = notifications.dispatch_pending(db)
-    return {"reminders_fired": fired, "messages_sent": sent}
+    return {"reminders_fired": fired, "back_in_stock_alerts": restocked, "messages_sent": sent}
 
 
 def _loop():

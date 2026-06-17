@@ -152,6 +152,23 @@ def trending(limit: int = Query(8, ge=1, le=24), db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{slug}/related", response_model=List[schemas.ProductOut])
+def related_products(slug: str, limit: int = Query(6, ge=1, le=12), db: Session = Depends(get_db)):
+    """Cross-sell: other in-stock products from the same category."""
+    product = db.query(models.Product).filter(models.Product.slug == slug).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return (
+        db.query(models.Product)
+        .filter(models.Product.category_id == product.category_id,
+                models.Product.id != product.id,
+                models.Product.is_active.is_(True), models.Product.stock > 0)
+        .order_by(models.Product.rating_avg.desc(), models.Product.view_count.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 @router.get("/{slug}", response_model=schemas.ProductDetailOut)
 def product_detail(slug: str, db: Session = Depends(get_db)):
     product = (

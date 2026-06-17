@@ -60,6 +60,15 @@ export const productsApi = {
   quickDelivery: () => api.get('/products/quick-delivery'),
   autocomplete: (q) => api.get('/products/autocomplete', { params: { q } }),
   trending: () => api.get('/products/trending'),
+  related: (slug) => api.get(`/products/${slug}/related`),
+};
+export const discoveryApi = {
+  recordView: (pid) => api.post(`/recently-viewed/${pid}`),
+  recentlyViewed: () => api.get('/recently-viewed'),
+  notifyMe: (pid) => api.post(`/products/${pid}/notify-me`),
+  paymentMethods: () => api.get('/payment-methods'),
+  addPaymentMethod: (d) => api.post('/payment-methods', d),
+  deletePaymentMethod: (id) => api.delete(`/payment-methods/${id}`),
 };
 export const categoriesApi = {
   list: () => api.get('/categories'),
