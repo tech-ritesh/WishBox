@@ -70,21 +70,27 @@ Legend: `[x]` done & verified · `[~]` partial/scaffolded · `[ ]` not started
 ---
 
 ## Remaining work (START HERE next session, in priority order)
-1. [ ] **Alembic migrations** — backend currently auto-creates tables via `Base.metadata.create_all`
-   in `main.py`. To add: `cd backend; alembic init alembic`; point `alembic/env.py` at
-   `app.core.database.Base.metadata` and `settings.DATABASE_URL`; `alembic revision --autogenerate`.
+1. [x] **Alembic migrations** — DONE. `alembic/` wired to `Base.metadata` + `settings.DATABASE_URL`
+   (batch mode for SQLite). 6 migrations; full chain rebuilds from scratch. New schema = new migration.
 2. [ ] **Corporate gifting admin UI + bulk orders** — model `CorporateAccount` exists and its discount
    is applied in `services/orders.place_order`. TODO: admin CRUD endpoints for corporate accounts,
-   a bulk/multi-recipient order endpoint, and a frontend corporate page.
-3. [ ] **Email/SMS notifications** — in-app `Notification` works; wire a background worker (see
-   docs/SCALABILITY.md §3) for email/SMS on order + reminder events.
-4. [ ] **LLM gift suggestions** — implement `services/recommendations.llm_rerank()` (hook exists,
-   returns None unless `WISHBOX_LLM_API_KEY` set). Use Claude structured output; fall back to local engine.
-5. [ ] **Payments** — add `services/payments.py` adapter (Stripe/Razorpay) + webhook; fields already modeled.
-6. [ ] **Frontend polish** — toast system, skeleton loaders, `React.lazy` admin code-split, product image gallery.
-7. [ ] **Cleanup (non-blocking)** — replace remaining `datetime.utcnow()` with timezone-aware calls;
-   `Query.get()` → `Session.get()`. Harmless deprecation warnings only.
-8. [ ] **More tests** — expand pytest beyond the smoke suite; add CI.
+   a bulk/multi-recipient order endpoint, and a frontend corporate page. (Only remaining brief item.)
+3. [x] **Email/SMS notifications** — DONE. `services/notifications.py` (console/SMTP/Twilio) + outbox
+   table + `services/worker.py` (lifespan-started) fires reminders, back-in-stock, order emails.
+4. [ ] **LLM gift suggestions** — hook `recommendations.llm_rerank()` still returns None unless wired.
+5. [x] **Payments** — DONE. `services/payments.py` Razorpay adapter + offline mock + /payments routes.
+6. [ ] **Frontend polish** — toast system, skeleton loaders, `React.lazy` admin code-split, image gallery.
+7. [ ] **Cleanup (non-blocking)** — remaining `datetime.utcnow()` / `Query.get()` deprecation warnings.
+8. [~] **More tests / CI** — smoke suite expanded 5 → 31 tests covering every new feature; CI still TODO.
+
+### Wave 1–3 feature expansion (DONE — see git history `f168c5d..d3d3bf7`)
+- **Wave 1 (critical):** Razorpay payments (+mock), auth hardening (verify/reset/address edit),
+  outbox+worker, shipment tracking + returns/exchange, GST tax invoices, relevance search+autocomplete.
+- **Wave 2 (high):** discovery (recently-viewed, cross-sell, back-in-stock, saved payments),
+  product variants (per-variant price/stock), guest checkout (shadow user + anonymous cart).
+- **Wave 3 (medium):** review images+helpful+moderation + product Q&A, wallet (loyalty cashback,
+  gift cards, store credit, referrals), support FAQ + tickets, CMS banners + CSV import + audit log +
+  sales report, SEO (sitemap/robots), multi-currency display.
 
 ---
 
@@ -114,6 +120,14 @@ Legend: `[x]` done & verified · `[~]` partial/scaffolded · `[ ]` not started
 9. **API**: `/api/v1`, paginated lists, consistent `{detail}` errors.
 
 ## Session log
+- Session 5 (2026-06-18): **Major feature expansion — 3 prioritized waves, ~16 features.**
+  Closed most e-commerce gaps vs Amazon/Flipkart (see a gap analysis discussion). Added payments,
+  auth hardening, email/SMS outbox + background worker, shipping + returns/refunds, GST invoices,
+  better search, discovery, product variants, guest checkout, reviews depth + Q&A, wallet/loyalty/
+  gift cards/referral, support FAQ + tickets, CMS banners, CSV import, audit log, sales reports,
+  SEO, multi-currency. **Set up Alembic** (6 migrations). Test suite **5 → 31 pytest, all pass**;
+  frontend build passes throughout. Everything committed + pushed to GitHub (tech-ritesh/WishBox).
+  Each feature is additive (new tables/endpoints) so prior functionality is unchanged.
 - Session 4 (2026-06-17): **Admin product edit + customizable visibility.**
   - Fixed regression: admin products page hung on "Loading…" because it fetched `limit:200`
     (backend cap is 100). Now `limit:100` + graceful `.catch`.
