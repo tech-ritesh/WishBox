@@ -246,3 +246,52 @@ def test_payment_verify_rejects_bad_signature():
     })
     assert bad.status_code == 400
     client.delete("/api/v1/cart", headers=h)
+
+
+def test_order_queues_email_and_worker_dispatches():
+    """Placing an order queues a confirmation email; the worker tick sends it."""
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "Mail", "phone": "9999999999",
+        "address_line1": "1 Mail St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    client.delete("/api/v1/cart", headers=h)
+    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    client.post("/api/v1/orders", headers=h, json={"address_id": addr["id"], "payment_method": "cod"})
+
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    queued = client.get("/api/v1/admin/outbox?status=queued", headers=ah).json()
+    assert any(m["channel"] == "email" for m in queued), "order should queue a confirmation email"
+
+    tick = client.post("/api/v1/admin/worker/run-tick", headers=ah)
+    assert tick.status_code == 200, tick.text
+    assert tick.json()["messages_sent"] >= 1
+    assert client.get("/api/v1/admin/outbox?status=queued", headers=ah).json() == []
+    client.delete("/api/v1/cart", headers=h)
+
+
+def test_due_reminder_fires_notification():
+    import datetime as _dt
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    yesterday = (_dt.date.today() - _dt.timedelta(days=1)).isoformat()
+    rem = client.post("/api/v1/reminders", headers=h, json={
+        "title": "Pytest Birthday", "reminder_date": yesterday, "recurrence": "yearly",
+    }).json()
+
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    tick = client.post("/api/v1/admin/worker/run-tick", headers=ah).json()
+    assert tick["reminders_fired"] >= 1
+
+    notifs = client.get("/api/v1/notifications", headers=h).json()
+    assert any(n["type"] == "reminder" and "Pytest Birthday" in n["title"] for n in notifs)
+
+    # yearly reminder rolled forward to a future date
+    after = client.get("/api/v1/reminders", headers=h).json()
+    mine = next(r for r in after if r["id"] == rem["id"])
+    assert mine["reminder_date"] > yesterday
+    client.delete(f"/api/v1/reminders/{rem['id']}", headers=h)

@@ -498,6 +498,20 @@ class HamperOut(BaseModel):
     items: List[HamperItemOut] = []
 
 
+# --- Outbox ------------------------------------------------------------------
+class OutboxMessageOut(BaseModel):
+    model_config = ORM
+    id: int
+    channel: str
+    to_address: str
+    subject: Optional[str] = None
+    body: str
+    status: str
+    error: Optional[str] = None
+    created_at: dt.datetime
+    sent_at: Optional[dt.datetime] = None
+
+
 # --- Admin analytics ---------------------------------------------------------
 class AdminSummaryOut(BaseModel):
     total_revenue: Decimal

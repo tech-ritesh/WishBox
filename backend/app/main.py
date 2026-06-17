@@ -1,5 +1,6 @@
 """WishBox API — application factory and router wiring."""
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,14 +13,26 @@ from app.core.database import Base, engine
 from app.api.routers import (
     admin, auth, cart, categories, engagement, hampers, orders, payments, products, storefront,
 )
+from app.services.worker import start_worker
 
 # Local-dev convenience: ensure tables exist. Production uses Alembic (see alembic/).
 Base.metadata.create_all(bind=engine)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Background worker runs only for a real server (the test client doesn't
+    # enter the lifespan context), so tests stay deterministic.
+    if start_worker():
+        print(f"[worker] started (interval={settings.WORKER_INTERVAL_SECONDS}s)")
+    yield
+
 
 app = FastAPI(
     title="WishBox API",
     description="Local-first gifting & hamper platform — successor to Celebration Box.",
     version=__version__,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

@@ -251,6 +251,23 @@ def low_stock(db: Session = Depends(get_db), _: models.User = Depends(require_st
     ).all()
 
 
+# --- Outbox (email/SMS) + worker ---
+@router.get("/outbox", response_model=List[schemas.OutboxMessageOut])
+def list_outbox(status: str = None, limit: int = 100,
+                db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    q = db.query(models.OutboxMessage)
+    if status:
+        q = q.filter(models.OutboxMessage.status == status)
+    return q.order_by(models.OutboxMessage.id.desc()).limit(min(limit, 200)).all()
+
+
+@router.post("/worker/run-tick")
+def run_worker_tick(db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    """Manually run one worker tick (fire due reminders + flush outbox). Handy for demos."""
+    from app.services.worker import run_tick
+    return run_tick(db)
+
+
 # --- Image upload (validated) ---
 @router.post("/upload")
 def upload_image(file: UploadFile = File(...), _: models.User = Depends(require_staff)):

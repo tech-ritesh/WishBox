@@ -480,6 +480,40 @@ class CorporateAccount(Base, TimestampMixin):
     members = relationship("User", back_populates="corporate_account")
 
 
+# --- Outbox (email / SMS) ----------------------------------------------------
+class OutboxMessage(Base):
+    """Queued outbound email/SMS. Dispatched by the background worker.
+
+    Default mode prints to the console (fully offline) and marks the row sent;
+    if SMTP / Twilio creds are configured the worker sends for real.
+    """
+    __tablename__ = "outbox_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    channel: Mapped[str] = mapped_column(String, default="email")  # email | sms
+    to_address: Mapped[str] = mapped_column(String, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="queued", index=True)  # queued | sent | failed
+    error: Mapped[str] = mapped_column(String, nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    sent_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
+
+
+# --- Auth tokens (email verification / password reset) -----------------------
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # verify_email | reset_password
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 # --- Audit -------------------------------------------------------------------
 class AuditLog(Base):
     __tablename__ = "audit_logs"

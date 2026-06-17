@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app import models
+from app.services import notifications
 from app.services.common import generate_order_number, money
 from app.services.coupons import CouponError, evaluate_coupon
 
@@ -138,6 +139,14 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
         body=f"Your order {order.order_number} has been placed successfully.",
         link=f"/orders/{order.order_number}",
     ))
+    # Queue confirmation email (dispatched by the worker; console in offline mode)
+    if user.email:
+        notifications.queue_email(
+            db, user.email, f"Order {order.order_number} confirmed",
+            f"Hi {user.full_name}, your WishBox order {order.order_number} for "
+            f"{order.total_amount} {('INR')} is confirmed. Track it any time in your account.",
+            user_id=user.id,
+        )
 
     # Clear cart
     db.query(models.CartItem).filter(models.CartItem.user_id == user.id).delete()
