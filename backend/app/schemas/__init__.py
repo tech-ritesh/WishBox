@@ -318,6 +318,25 @@ class OrderOut(BaseModel):
     history: List[OrderStatusHistoryOut] = []
 
 
+class InvoiceOut(BaseModel):
+    model_config = ORM
+    id: int
+    order_id: int
+    invoice_number: str
+    seller_gstin: Optional[str] = None
+    place_of_supply: Optional[str] = None
+    gst_percent: Decimal
+    subtotal: Decimal
+    discount_amount: Decimal
+    shipping_fee: Decimal
+    taxable_value: Decimal
+    cgst: Decimal
+    sgst: Decimal
+    igst: Decimal
+    total_amount: Decimal
+    created_at: dt.datetime
+
+
 class OrderStatusUpdate(BaseModel):
     status: Optional[str] = None
     payment_status: Optional[str] = None

@@ -26,6 +26,25 @@ def _latest_token(email, kind):
         db.close()
 
 
+def _orderable_product(min_stock=5):
+    """Find-or-create a dedicated high-stock test product so the suite never
+    depletes the demo catalog. Restocks it if a prior test ran it low."""
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    found = client.get("/api/v1/products?q=PytestOrderable&limit=1").json()["items"]
+    if found:
+        p = found[0]
+        if p["stock"] < min_stock + 2:
+            client.put(f"/api/v1/products/{p['id']}".replace("/products/", "/admin/products/"),
+                       headers=ah, json={"stock": 999})
+            p = client.get(f"/api/v1/products/{p['slug']}").json()
+        return p
+    leaf, _ = _find_leaf(client.get("/api/v1/categories/tree").json())
+    return client.post("/api/v1/admin/products", headers=ah, json={
+        "name": "PytestOrderable Gift", "price": 500, "stock": 999, "category_id": leaf["id"],
+    }).json()
+
+
 def _login(email, password):
     r = client.post("/api/v1/auth/login-json", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
@@ -57,7 +76,7 @@ def test_customer_order_flow():
     address_id = addr.json()["id"]
 
     # pick a product, add to cart
-    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    product = _orderable_product()
     cart = client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 2})
     assert cart.status_code == 201, cart.text
     assert cart.json()["item_count"] == 2
@@ -213,7 +232,7 @@ def test_online_payment_flow_mock_gateway():
     }).json()
 
     client.delete("/api/v1/cart", headers=h)
-    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    product = _orderable_product()
     client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
 
     order = client.post("/api/v1/orders", headers=h, json={
@@ -249,7 +268,7 @@ def test_payment_verify_rejects_bad_signature():
         "address_line1": "1 X St", "city": "Pune", "state": "MH", "postal_code": "411001",
     }).json()
     client.delete("/api/v1/cart", headers=h)
-    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    product = _orderable_product()
     client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
     order = client.post("/api/v1/orders", headers=h, json={
         "address_id": addr["id"], "payment_method": "card",
@@ -274,7 +293,7 @@ def test_order_queues_email_and_worker_dispatches():
         "address_line1": "1 Mail St", "city": "Pune", "state": "MH", "postal_code": "411001",
     }).json()
     client.delete("/api/v1/cart", headers=h)
-    product = client.get("/api/v1/products?limit=1").json()["items"][0]
+    product = _orderable_product()
     client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
     client.post("/api/v1/orders", headers=h, json={"address_id": addr["id"], "payment_method": "cod"})
 
@@ -340,12 +359,68 @@ def test_email_verification_flow():
     })
     token = reg.json().get("access_token") or _login(email, "verifypass123")
     h = {"Authorization": f"Bearer {token}"}
+    # Reset to unverified so the flow runs fresh even on repeat runs.
+    _db = SessionLocal()
+    try:
+        u = _db.query(models.User).filter(models.User.email == email).first()
+        u.email_verified = False
+        _db.commit()
+    finally:
+        _db.close()
     assert client.get("/api/v1/auth/profile", headers=h).json()["email_verified"] is False
 
     assert client.post("/api/v1/auth/verify-email/request", headers=h).status_code == 200
     vtoken = _latest_token(email, "verify_email")
     assert client.post("/api/v1/auth/verify-email/confirm", json={"token": vtoken}).status_code == 200
     assert client.get("/api/v1/auth/profile", headers=h).json()["email_verified"] is True
+
+
+def test_order_invoice_gst_breakdown():
+    """Invoice is generated lazily and its total equals the order total
+    (GST is the embedded component, not added on top)."""
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "Inv", "phone": "9999999999",
+        "address_line1": "1 Inv St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    client.delete("/api/v1/cart", headers=h)
+    product = _orderable_product()
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    order = client.post("/api/v1/orders", headers=h, json={"address_id": addr["id"], "payment_method": "cod"}).json()
+
+    inv = client.get(f"/api/v1/orders/{order['order_number']}/invoice", headers=h)
+    assert inv.status_code == 200, inv.text
+    body = inv.json()
+    assert body["invoice_number"] == f"INV-{order['order_number']}"
+    # MH ship state => intra-state => CGST + SGST (no IGST)
+    assert float(body["cgst"]) > 0 and float(body["sgst"]) > 0
+    assert float(body["igst"]) == 0
+    # taxable + cgst + sgst ~= goods (subtotal - discount); total matches the order exactly
+    goods = round(float(body["taxable_value"]) + float(body["cgst"]) + float(body["sgst"]), 2)
+    assert abs(goods - (float(body["subtotal"]) - float(body["discount_amount"]))) < 0.05
+    assert float(body["total_amount"]) == float(order["total_amount"])
+
+    # idempotent: same invoice number on refetch
+    again = client.get(f"/api/v1/orders/{order['order_number']}/invoice", headers=h).json()
+    assert again["id"] == body["id"]
+    client.delete("/api/v1/cart", headers=h)
+
+
+def test_inter_state_invoice_uses_igst():
+    token = _login("customer@wishbox.com", "customer123")
+    h = {"Authorization": f"Bearer {token}"}
+    addr = client.post("/api/v1/auth/addresses", headers=h, json={
+        "recipient_name": "KA", "phone": "9999999999",
+        "address_line1": "1 KA St", "city": "Bengaluru", "state": "KA", "postal_code": "560001",
+    }).json()
+    client.delete("/api/v1/cart", headers=h)
+    product = _orderable_product()
+    client.post("/api/v1/cart", headers=h, json={"product_id": product["id"], "quantity": 1})
+    order = client.post("/api/v1/orders", headers=h, json={"address_id": addr["id"], "payment_method": "cod"}).json()
+    body = client.get(f"/api/v1/orders/{order['order_number']}/invoice", headers=h).json()
+    assert float(body["igst"]) > 0 and float(body["cgst"]) == 0 and float(body["sgst"]) == 0
+    client.delete("/api/v1/cart", headers=h)
 
 
 def test_address_can_be_edited():

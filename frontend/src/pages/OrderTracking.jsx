@@ -10,7 +10,9 @@ const FLOW = ['pending', 'confirmed', 'packed', 'shipped', 'out_for_delivery', '
 export default function OrderTracking() {
   const { orderNumber } = useParams();
   const [order, setOrder] = useState(null);
+  const [invoice, setInvoice] = useState(null);
   useEffect(() => { ordersApi.get(orderNumber).then((r) => setOrder(r.data)); }, [orderNumber]);
+  const loadInvoice = () => ordersApi.invoice(orderNumber).then((r) => setInvoice(r.data));
   if (!order) return <Spinner />;
 
   const reached = FLOW.indexOf(order.status);
@@ -75,6 +77,35 @@ export default function OrderTracking() {
             ))}
           </ul>
         </div>
+      </div>
+
+      <div className="card mt-4 p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold">Tax invoice (GST)</h2>
+          <div className="flex gap-2">
+            {!invoice && <button onClick={loadInvoice} className="btn-ghost text-sm">View invoice</button>}
+            {invoice && <button onClick={() => window.print()} className="btn-ghost text-sm">Print</button>}
+          </div>
+        </div>
+        {invoice && (
+          <div className="mt-3 text-sm">
+            <div className="flex flex-wrap justify-between text-slate-500">
+              <span>Invoice <b>{invoice.invoice_number}</b></span>
+              <span>Seller GSTIN: {invoice.seller_gstin}</span>
+              <span>Place of supply: {invoice.place_of_supply}</span>
+            </div>
+            <div className="mt-3 space-y-1 border-t pt-2">
+              <div className="flex justify-between"><span>Taxable value</span><span>{inr(invoice.taxable_value)}</span></div>
+              {Number(invoice.cgst) > 0 && <div className="flex justify-between"><span>CGST ({Number(invoice.gst_percent) / 2}%)</span><span>{inr(invoice.cgst)}</span></div>}
+              {Number(invoice.sgst) > 0 && <div className="flex justify-between"><span>SGST ({Number(invoice.gst_percent) / 2}%)</span><span>{inr(invoice.sgst)}</span></div>}
+              {Number(invoice.igst) > 0 && <div className="flex justify-between"><span>IGST ({Number(invoice.gst_percent)}%)</span><span>{inr(invoice.igst)}</span></div>}
+              {Number(invoice.discount_amount) > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-{inr(invoice.discount_amount)}</span></div>}
+              <div className="flex justify-between"><span>Shipping</span><span>{Number(invoice.shipping_fee) === 0 ? 'FREE' : inr(invoice.shipping_fee)}</span></div>
+              <div className="flex justify-between border-t pt-1 font-bold"><span>Total (incl. GST)</span><span>{inr(invoice.total_amount)}</span></div>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Prices are GST-inclusive; tax shown is the GST component of the goods value.</p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     # --- Tax / GST ---
     GST_PERCENT: float = 18.0               # default GST applied to taxable subtotal
-    GST_INCLUSIVE: bool = False             # False = tax added on top; True = prices already include tax
+    GST_INCLUSIVE: bool = True              # True = listed prices already include GST (Indian retail norm)
     STORE_GSTIN: str = "27AAAAA0000A1Z5"    # seller GSTIN printed on invoices (demo value)
 
     # --- Email (SMTP optional; blank => console + outbox only) ---

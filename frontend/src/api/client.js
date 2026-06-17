@@ -74,6 +74,7 @@ export const ordersApi = {
   create: (d) => api.post('/orders', d),
   list: () => api.get('/orders'),
   get: (num) => api.get(`/orders/${num}`),
+  invoice: (num) => api.get(`/orders/${num}/invoice`),
 };
 export const couponsApi = { validate: (code, subtotal) => api.post('/coupons/validate', { code, subtotal }) };
 export const paymentsApi = {

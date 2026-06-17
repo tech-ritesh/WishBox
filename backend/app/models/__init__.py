@@ -480,6 +480,32 @@ class CorporateAccount(Base, TimestampMixin):
     members = relationship("User", back_populates="corporate_account")
 
 
+# --- Invoices ----------------------------------------------------------------
+class Invoice(Base):
+    """GST tax invoice for an order. Generated lazily; one per order."""
+    __tablename__ = "invoices"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"),
+                                          nullable=False, unique=True, index=True)
+    invoice_number: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    seller_gstin: Mapped[str] = mapped_column(String, nullable=True)
+    place_of_supply: Mapped[str] = mapped_column(String, nullable=True)
+    gst_percent: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    # Money breakdown (taxable_value + gst == goods total; +shipping -discount == order total)
+    subtotal: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    shipping_fee: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    taxable_value: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    cgst: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    sgst: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    igst: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_utcnow)
+
+    order = relationship("Order")
+
+
 # --- Outbox (email / SMS) ----------------------------------------------------
 class OutboxMessage(Base):
     """Queued outbound email/SMS. Dispatched by the background worker.
