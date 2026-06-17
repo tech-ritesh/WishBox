@@ -16,6 +16,7 @@ export default function ProductDetails() {
   const [reviews, setReviews] = useState([]);
   const [related, setRelated] = useState([]);
   const [qty, setQty] = useState(1);
+  const [variant, setVariant] = useState(null);
   const [msg, setMsg] = useState('');
   const [notifyMsg, setNotifyMsg] = useState('');
   const [personalMsg, setPersonalMsg] = useState('');
@@ -61,10 +62,29 @@ export default function ProductDetails() {
             <Star size={16} fill="currentColor" /> {Number(product.rating_avg).toFixed(1)}
             <span className="text-slate-400">· {product.rating_count} reviews</span>
           </div>
-          <div className="mt-4 flex items-center gap-3">
-            <span className="text-3xl font-bold">{inr(product.discount_price ?? product.price)}</span>
-            {product.discount_price != null && <span className="text-lg text-slate-400 line-through">{inr(product.price)}</span>}
-          </div>
+          {(() => {
+            const base = Number(product.discount_price ?? product.price);
+            const delta = variant ? Number(variant.price_delta) : 0;
+            return (
+              <div className="mt-4 flex items-center gap-3">
+                <span className="text-3xl font-bold">{inr(base + delta)}</span>
+                {product.discount_price != null && <span className="text-lg text-slate-400 line-through">{inr(product.price)}</span>}
+              </div>
+            );
+          })()}
+          {product.variants?.length > 0 && (
+            <div className="mt-4">
+              <label className="text-sm font-semibold">Choose an option</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {product.variants.filter((v) => v.is_active).map((v) => (
+                  <button key={v.id} onClick={() => setVariant(v)} disabled={v.stock <= 0}
+                    className={`btn text-sm ${variant?.id === v.id ? 'btn-primary' : 'btn-ghost'} ${v.stock <= 0 ? 'opacity-40' : ''}`}>
+                    {v.name}{Number(v.price_delta) ? ` (+${inr(v.price_delta)})` : ''}{v.stock <= 0 ? ' — out' : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="mt-4 text-slate-600">{product.description}</p>
 
           <div className="mt-3 flex flex-wrap gap-2">
@@ -79,8 +99,14 @@ export default function ProductDetails() {
               <Sparkles size={16} /> Customizable — personalize this gift
             </p>
           )}
-          <p className="mt-2 text-sm text-slate-500">{product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}</p>
-          {product.stock <= 0 && (
+          {(() => {
+            const hasVariants = product.variants?.length > 0;
+            const eff = hasVariants ? (variant ? variant.stock : null) : product.stock;
+            const label = hasVariants && variant === null ? 'Select an option above'
+              : eff > 0 ? `${eff} in stock` : 'Out of stock';
+            return <p className="mt-2 text-sm text-slate-500">{label}</p>;
+          })()}
+          {(product.variants?.length > 0 ? (variant && variant.stock <= 0) : product.stock <= 0) && (
             <div className="mt-2">
               <button onClick={notifyMe} className="btn-ghost text-sm">🔔 Notify me when available</button>
               {notifyMsg && <p className="mt-1 text-xs text-brand-600">{notifyMsg}</p>}
@@ -96,18 +122,27 @@ export default function ProductDetails() {
             </div>
           )}
 
-          <div className="mt-5 flex items-center gap-3">
-            <input type="number" min={1} max={product.stock} value={qty}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value)))} className="input w-20" />
-            <button disabled={product.stock <= 0}
-              onClick={() => {
-                if (!user) { window.location.href = '/login'; return; }
-                const customization = product.is_customizable && personalMsg.trim() ? { message: personalMsg.trim() } : null;
-                add(product.id, qty, customization);
-              }}
-              className="btn-primary flex-1"><ShoppingCart size={18} /> Add to cart</button>
-            {user && <button onClick={() => wishlistApi.add(product.id)} className="btn-ghost"><Heart size={18} /></button>}
-          </div>
+          {(() => {
+            const hasVariants = product.variants?.length > 0;
+            const effStock = hasVariants ? (variant ? variant.stock : 0) : product.stock;
+            const needsVariant = hasVariants && variant === null;
+            return (
+              <div className="mt-5 flex items-center gap-3">
+                <input type="number" min={1} max={effStock} value={qty}
+                  onChange={(e) => setQty(Math.max(1, Number(e.target.value)))} className="input w-20" />
+                <button disabled={effStock <= 0 || needsVariant}
+                  onClick={() => {
+                    if (!user) { window.location.href = '/login'; return; }
+                    const customization = product.is_customizable && personalMsg.trim() ? { message: personalMsg.trim() } : null;
+                    add(product.id, qty, customization, variant?.id ?? null);
+                  }}
+                  className="btn-primary flex-1">
+                  <ShoppingCart size={18} /> {needsVariant ? 'Select an option' : 'Add to cart'}
+                </button>
+                {user && <button onClick={() => wishlistApi.add(product.id)} className="btn-ghost"><Heart size={18} /></button>}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

@@ -189,10 +189,32 @@ class ProductOut(BaseModel):
     created_at: dt.datetime
 
 
+class ProductVariantOut(BaseModel):
+    model_config = ORM
+    id: int
+    sku: Optional[str] = None
+    name: str
+    attributes: Optional[Dict[str, Any]] = None
+    price_delta: Decimal = Decimal(0)
+    stock: int
+    image_url: Optional[str] = None
+    is_active: bool = True
+
+
+class ProductVariantCreate(BaseModel):
+    name: str
+    sku: Optional[str] = None
+    attributes: Optional[Dict[str, Any]] = None
+    price_delta: Decimal = Decimal(0)
+    stock: int = 0
+    image_url: Optional[str] = None
+
+
 class ProductDetailOut(ProductOut):
     category: CategoryOut
     images: List[ProductImageOut] = []
     tags: List[TagOut] = []
+    variants: List[ProductVariantOut] = []
 
 
 class ProductCreate(BaseModel):
@@ -247,6 +269,7 @@ class AutocompleteResponse(BaseModel):
 # --- Cart --------------------------------------------------------------------
 class CartItemCreate(BaseModel):
     product_id: int
+    variant_id: Optional[int] = None
     quantity: int = Field(default=1, ge=1)
     customization_details: Optional[Dict[str, Any]] = None
 
@@ -260,9 +283,11 @@ class CartItemOut(BaseModel):
     model_config = ORM
     id: int
     product_id: int
+    variant_id: Optional[int] = None
     quantity: int
     customization_details: Optional[Dict[str, Any]] = None
     product: ProductOut
+    variant: Optional[ProductVariantOut] = None
 
 
 class CartSummary(BaseModel):
@@ -276,7 +301,9 @@ class OrderItemOut(BaseModel):
     model_config = ORM
     id: int
     product_id: int
+    variant_id: Optional[int] = None
     product_name: str
+    variant_name: Optional[str] = None
     unit_price: Decimal
     quantity: int
     customization_details: Optional[Dict[str, Any]] = None

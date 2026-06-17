@@ -11,14 +11,21 @@ from app.services.common import money
 router = APIRouter(prefix="/cart", tags=["Cart"])
 
 
+def _line_unit(item: models.CartItem) -> Decimal:
+    price = money(item.product.effective_price)
+    if item.variant is not None:
+        price += money(item.variant.price_delta)
+    return price
+
+
 def _summary(db: Session, user_id: int) -> dict:
     items = (
         db.query(models.CartItem)
-        .options(joinedload(models.CartItem.product))
+        .options(joinedload(models.CartItem.product), joinedload(models.CartItem.variant))
         .filter(models.CartItem.user_id == user_id)
         .all()
     )
-    subtotal = sum((money(i.product.effective_price) * i.quantity for i in items), Decimal(0))
+    subtotal = sum((_line_unit(i) * i.quantity for i in items), Decimal(0))
     return {"items": items, "subtotal": money(subtotal), "item_count": sum(i.quantity for i in items)}
 
 
@@ -35,18 +42,31 @@ def add_to_cart(data: schemas.CartItemCreate, current_user: models.User = Depend
     ).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    if product.stock < data.quantity:
+
+    # Resolve variant (optional). Stock is checked against the variant if chosen.
+    variant = None
+    if data.variant_id is not None:
+        variant = db.query(models.ProductVariant).filter(
+            models.ProductVariant.id == data.variant_id,
+            models.ProductVariant.product_id == product.id,
+            models.ProductVariant.is_active.is_(True),
+        ).first()
+        if not variant:
+            raise HTTPException(status_code=404, detail="Variant not found")
+    available = variant.stock if variant else product.stock
+    if available < data.quantity:
         raise HTTPException(status_code=409, detail="Not enough stock")
 
     existing = db.query(models.CartItem).filter(
         models.CartItem.user_id == current_user.id,
         models.CartItem.product_id == data.product_id,
+        models.CartItem.variant_id == data.variant_id,
     ).first()
     if existing and not data.customization_details:
         existing.quantity += data.quantity
     else:
         db.add(models.CartItem(
-            user_id=current_user.id, product_id=data.product_id,
+            user_id=current_user.id, product_id=data.product_id, variant_id=data.variant_id,
             quantity=data.quantity, customization_details=data.customization_details,
         ))
     db.commit()

@@ -423,6 +423,52 @@ def test_inter_state_invoice_uses_igst():
     client.delete("/api/v1/cart", headers=h)
 
 
+def test_product_variant_purchase_flow():
+    admin = _login("admin@wishbox.com", "admin12345")
+    ah = {"Authorization": f"Bearer {admin}"}
+    leaf, _ = _find_leaf(client.get("/api/v1/categories/tree").json())
+    prod = client.post("/api/v1/admin/products", headers=ah, json={
+        "name": "PytestVariant Mug", "price": 300, "stock": 0, "category_id": leaf["id"],
+    }).json()
+    # base product is out of stock; stock lives on variants
+    big = client.post(f"/api/v1/admin/products/{prod['id']}/variants", headers=ah, json={
+        "name": "Large / Red", "attributes": {"size": "L", "color": "Red"},
+        "price_delta": 100, "stock": 5,
+    })
+    assert big.status_code == 201, big.text
+    variant = big.json()
+
+    detail = client.get(f"/api/v1/products/{prod['slug']}").json()
+    assert any(v["id"] == variant["id"] for v in detail["variants"])
+
+    cust = _login("customer@wishbox.com", "customer123")
+    ch = {"Authorization": f"Bearer {cust}"}
+    client.delete("/api/v1/cart", headers=ch)
+    cart = client.post("/api/v1/cart", headers=ch, json={
+        "product_id": prod["id"], "variant_id": variant["id"], "quantity": 2,
+    })
+    assert cart.status_code == 201, cart.text
+    # unit price = base 300 + delta 100 = 400 -> subtotal 800
+    assert float(cart.json()["subtotal"]) == 800.0
+
+    addr = client.post("/api/v1/auth/addresses", headers=ch, json={
+        "recipient_name": "V", "phone": "9999999999",
+        "address_line1": "1 V St", "city": "Pune", "state": "MH", "postal_code": "411001",
+    }).json()
+    order = client.post("/api/v1/orders", headers=ch, json={"address_id": addr["id"], "payment_method": "cod"}).json()
+    line = order["items"][0]
+    assert line["variant_id"] == variant["id"]
+    assert line["variant_name"] == "Large / Red"
+    assert float(line["unit_price"]) == 400.0
+
+    # variant stock decremented 5 -> 3
+    vleft = client.get(f"/api/v1/admin/products/{prod['id']}/variants", headers=ah).json()[0]["stock"]
+    assert vleft == 3
+
+    client.delete("/api/v1/cart", headers=ch)
+    client.delete(f"/api/v1/admin/products/{prod['id']}", headers=ah)
+
+
 def test_recently_viewed_and_related_and_payment_methods():
     token = _login("customer@wishbox.com", "customer123")
     h = {"Authorization": f"Bearer {token}"}

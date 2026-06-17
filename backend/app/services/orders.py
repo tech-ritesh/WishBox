@@ -19,8 +19,10 @@ SHIPPING_FEE = Decimal("49")
 
 
 def _line_price(item: models.CartItem, db: Session) -> Decimal:
-    """Base effective price + customization add-on costs."""
+    """Base effective price (+ variant delta) + customization add-on costs."""
     price = money(item.product.effective_price)
+    if item.variant is not None:
+        price += money(item.variant.price_delta)
     details = item.customization_details or {}
     if item.product.is_customizable and details:
         for key in ("packaging", "card"):
@@ -44,14 +46,15 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
     if not address:
         raise HTTPException(status_code=400, detail="Invalid shipping address")
 
-    # Validate stock up front (avoid partial commits)
+    # Validate stock up front (avoid partial commits). Variant stock when present.
     for item in cart_items:
         if not item.product.is_active:
             raise HTTPException(status_code=400, detail=f"'{item.product.name}' is no longer available")
-        if item.product.stock < item.quantity:
+        available = item.variant.stock if item.variant else item.product.stock
+        if available < item.quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Insufficient stock for '{item.product.name}' (have {item.product.stock})",
+                detail=f"Insufficient stock for '{item.product.name}' (have {available})",
             )
 
     subtotal = Decimal(0)
@@ -112,13 +115,18 @@ def place_order(db: Session, user: models.User, data) -> models.Order:
         db.add(models.OrderItem(
             order_id=order.id,
             product_id=item.product_id,
+            variant_id=item.variant_id,
             product_name=item.product.name,
+            variant_name=item.variant.name if item.variant else None,
             unit_price=unit,
             quantity=item.quantity,
             customization_details=item.customization_details,
         ))
-        # Decrement stock + ledger entry
-        item.product.stock -= item.quantity
+        # Decrement stock (variant if present, else product) + ledger entry
+        if item.variant is not None:
+            item.variant.stock -= item.quantity
+        else:
+            item.product.stock -= item.quantity
         db.add(models.StockMovement(
             product_id=item.product_id,
             change=-item.quantity,

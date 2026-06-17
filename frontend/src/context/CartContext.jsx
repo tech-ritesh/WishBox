@@ -21,8 +21,10 @@ export function CartProvider({ children }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const add = async (productId, quantity = 1, customization = null) => {
-    const { data } = await cartApi.add({ product_id: productId, quantity, customization_details: customization });
+  const add = async (productId, quantity = 1, customization = null, variantId = null) => {
+    const { data } = await cartApi.add({
+      product_id: productId, variant_id: variantId, quantity, customization_details: customization,
+    });
     setCart(data);
   };
   const update = async (id, quantity) => { const { data } = await cartApi.update(id, { quantity }); setCart(data); };

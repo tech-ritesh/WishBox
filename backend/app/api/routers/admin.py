@@ -252,6 +252,34 @@ def low_stock(db: Session = Depends(get_db), _: models.User = Depends(require_st
     ).all()
 
 
+# --- Product variants ---
+@router.get("/products/{product_id}/variants", response_model=List[schemas.ProductVariantOut])
+def list_variants(product_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_staff)):
+    return db.query(models.ProductVariant).filter(
+        models.ProductVariant.product_id == product_id
+    ).order_by(models.ProductVariant.id.asc()).all()
+
+
+@router.post("/products/{product_id}/variants", response_model=schemas.ProductVariantOut, status_code=201)
+def create_variant(product_id: int, data: schemas.ProductVariantCreate,
+                   db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    if not db.get(models.Product, product_id):
+        raise HTTPException(status_code=404, detail="Product not found")
+    variant = models.ProductVariant(product_id=product_id, **data.model_dump())
+    db.add(variant)
+    db.commit()
+    db.refresh(variant)
+    return variant
+
+
+@router.delete("/variants/{variant_id}", status_code=204)
+def delete_variant(variant_id: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+    v = db.get(models.ProductVariant, variant_id)
+    if v:
+        db.delete(v)
+        db.commit()
+
+
 # --- Shipping ---
 @router.post("/orders/{order_id}/shipment", response_model=schemas.ShipmentOut)
 def upsert_order_shipment(order_id: int, data: schemas.ShipmentUpdate,

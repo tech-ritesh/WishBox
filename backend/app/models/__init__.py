@@ -181,11 +181,33 @@ class Product(Base, TimestampMixin):
     vendor = relationship("Vendor", back_populates="products")
     tags = relationship("Tag", secondary=product_tags, back_populates="products")
     images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
+    variants = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
 
     @property
     def effective_price(self):
         return self.discount_price if self.discount_price is not None else self.price
+
+
+class ProductVariant(Base, TimestampMixin):
+    """A purchasable variation of a product (e.g. Size: Large / Color: Red).
+
+    Variant-less products keep using Product.stock and Product.price exactly as
+    before — variants are entirely opt-in.
+    """
+    __tablename__ = "product_variants"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    sku: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)          # display label, e.g. "Large / Red"
+    attributes: Mapped[dict] = mapped_column(JSON, nullable=True)      # {"size": "L", "color": "Red"}
+    price_delta: Mapped[float] = mapped_column(Numeric(10, 2), default=0)  # +/- on the base effective price
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+    image_url: Mapped[str] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    product = relationship("Product", back_populates="variants")
 
 
 class ProductImage(Base):
@@ -217,11 +239,13 @@ class CartItem(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     customization_details: Mapped[dict] = mapped_column(JSON, nullable=True)
 
     user = relationship("User", back_populates="cart_items")
     product = relationship("Product")
+    variant = relationship("ProductVariant")
 
 
 class Hamper(Base, TimestampMixin):
@@ -300,7 +324,9 @@ class OrderItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
     product_name: Mapped[str] = mapped_column(String, nullable=False)  # snapshot
+    variant_name: Mapped[str] = mapped_column(String, nullable=True)   # snapshot
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     customization_details: Mapped[dict] = mapped_column(JSON, nullable=True)

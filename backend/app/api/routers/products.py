@@ -174,7 +174,7 @@ def product_detail(slug: str, db: Session = Depends(get_db)):
     product = (
         db.query(models.Product)
         .options(joinedload(models.Product.images), joinedload(models.Product.tags),
-                 joinedload(models.Product.category))
+                 joinedload(models.Product.category), joinedload(models.Product.variants))
         .filter(models.Product.slug == slug)
         .first()
     )
