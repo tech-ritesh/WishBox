@@ -41,6 +41,10 @@ export default function Navbar() {
           ))}
           <Link to="/hamper-builder" onMouseEnter={() => setOpenId(null)} className="hover:text-brand-600">Build a Hamper</Link>
           <Link to="/gift-finder" onMouseEnter={() => setOpenId(null)} className="flex items-center gap-1 hover:text-brand-600"><Sparkles size={15} /> Gift Finder</Link>
+          {/* Static premium showcase page (full-page nav, shares the same auth token) */}
+          <a href="/showcase.html" onMouseEnter={() => setOpenId(null)} className="flex items-center gap-1 hover:text-brand-600">
+            Showcase <span className="badge bg-brand-100 text-brand-700">New</span>
+          </a>
         </div>
         <div className="ml-auto" />
         <SearchBox />

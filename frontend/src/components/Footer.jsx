@@ -10,6 +10,7 @@ export default function Footer() {
           <div className="flex gap-4">
             <Link to="/support" className="hover:text-brand-600">Help &amp; Support</Link>
             <Link to="/shop" className="hover:text-brand-600">Shop</Link>
+            <a href="/showcase.html" className="hover:text-brand-600">Showcase</a>
           </div>
           <p>© {new Date().getFullYear()} WishBox</p>
         </div>
